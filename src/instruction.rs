@@ -13,11 +13,23 @@ use solana_program::{
 
 #[derive(Debug)]
 pub enum AtomicSwapInstruction {
-    SolanaPayment {
+    Payment {
         id: [u8; 32],
-        receiver: Pubkey,
         secret_hash: [u8; 32],
         lock_time: u64,
+        receiver: Pubkey,
+    },
+    ReceiverSpend {
+        id: [u8; 32],
+        secret: [u8; 32],
+        amount: u64,
+        sender: Pubkey,
+    },
+    SenderRefund {
+        id: [u8; 32],
+        secret_hash: [u8; 32],
+        amount: u64,
+        receiver: Pubkey,
     },
 }
 
@@ -29,36 +41,98 @@ impl AtomicSwapInstruction {
         match instruction_byte {
             0 => {
                 if input.len() != 105 {
-                    // 32 bytes for the public key + 8 bytes for the balance
+                    // 1 + 32 + 32 + 8 + 32
                     return Err(ProgramError::InvalidAccountData);
                 }
 
-                // Extract the owner's public key
                 let id = input[1..33]
                     .try_into()
                     .map_err(|_| ProgramError::InvalidAccountData)?;
 
-                let receiver = Pubkey::new_from_array(
-                    input[33..65]
-                        .try_into()
-                        .expect("slice with incorrect length"),
-                );
-
-                let secret_hash = input[65..97]
+                let secret_hash = input[33..65]
                     .try_into()
                     .map_err(|_| ProgramError::InvalidAccountData)?;
 
-                // Extract the balance
-                let lock_time_array = input[97..105]
+                let lock_time_array = input[65..73]
                     .try_into()
                     .map_err(|_| ProgramError::InvalidAccountData)?;
                 let lock_time = u64::from_le_bytes(lock_time_array);
 
-                Ok(AtomicSwapInstruction::SolanaPayment {
+                let receiver = Pubkey::new_from_array(
+                    input[73..105]
+                        .try_into()
+                        .expect("slice with incorrect length"),
+                );
+
+                Ok(AtomicSwapInstruction::Payment {
                     id,
-                    receiver,
                     secret_hash,
                     lock_time,
+                    receiver,
+                })
+            }
+            1 => {
+                if input.len() != 105 {
+                    // 1 + 32 + 32 + 8 + 32
+                    return Err(ProgramError::InvalidAccountData);
+                }
+
+                let id = input[1..33]
+                    .try_into()
+                    .map_err(|_| ProgramError::InvalidAccountData)?;
+
+                let secret = input[33..65]
+                    .try_into()
+                    .map_err(|_| ProgramError::InvalidAccountData)?;
+
+                let amount_array = input[65..73]
+                    .try_into()
+                    .map_err(|_| ProgramError::InvalidAccountData)?;
+                let amount = u64::from_le_bytes(amount_array);
+
+                let sender = Pubkey::new_from_array(
+                    input[73..105]
+                        .try_into()
+                        .expect("slice with incorrect length"),
+                );
+
+                Ok(AtomicSwapInstruction::ReceiverSpend {
+                    id,
+                    secret,
+                    amount,
+                    sender,
+                })
+            }
+            2 => {
+                if input.len() != 105 {
+                    // 1 + 32 + 32 + 8 + 32
+                    return Err(ProgramError::InvalidAccountData);
+                }
+
+                let id = input[1..33]
+                    .try_into()
+                    .map_err(|_| ProgramError::InvalidAccountData)?;
+
+                let secret_hash = input[33..65]
+                    .try_into()
+                    .map_err(|_| ProgramError::InvalidAccountData)?;
+
+                let amount_array = input[65..73]
+                    .try_into()
+                    .map_err(|_| ProgramError::InvalidAccountData)?;
+                let amount = u64::from_le_bytes(amount_array);
+
+                let receiver = Pubkey::new_from_array(
+                    input[73..105]
+                        .try_into()
+                        .expect("slice with incorrect length"),
+                );
+
+                Ok(AtomicSwapInstruction::SenderRefund {
+                    id,
+                    secret_hash,
+                    amount,
+                    receiver,
                 })
             }
             _ => Err(ProgramError::InvalidInstructionData),

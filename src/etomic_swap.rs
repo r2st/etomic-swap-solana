@@ -41,13 +41,29 @@ pub fn process_instruction(
         .map_err(|_| ProgramError::InvalidInstructionData)?;
 
     match instruction {
-        AtomicSwapInstruction::SolanaPayment {
+        AtomicSwapInstruction::Payment {
             id,
-            receiver,
             secret_hash,
             lock_time,
+            receiver,
         } => {
-            msg!("Processing SolanaPayment");
+            msg!("Processing Payment");
+        }
+        AtomicSwapInstruction::ReceiverSpend {
+            id,
+            secret,
+            amount,
+            sender,
+        } => {
+            msg!("Processing ReceiverSpend");
+        }
+        AtomicSwapInstruction::SenderRefund {
+            id,
+            secret_hash,
+            amount,
+            receiver,
+        } => {
+            msg!("Processing SenderRefund");
         }
     }
 
