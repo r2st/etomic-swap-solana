@@ -1,25 +1,23 @@
 use crate::instruction::AtomicSwapInstruction;
 use crate::payment::{Payment, PaymentState};
-use borsh::{BorshSchema, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint,
     entrypoint::ProgramResult,
     hash::Hasher,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke,
     program_error::ProgramError,
-    program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
     system_instruction,
     sysvar::clock::Clock,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::Sysvar,
 };
 
 entrypoint!(process_instruction);
 
 pub fn process_instruction(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
@@ -28,7 +26,6 @@ pub fn process_instruction(
 
     match instruction {
         AtomicSwapInstruction::LamportsPayment {
-            id,
             secret_hash,
             lock_time,
             amount,
@@ -44,7 +41,6 @@ pub fn process_instruction(
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
-            let receiver_account = next_account_info(accounts_iter)?;
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
@@ -79,7 +75,6 @@ pub fn process_instruction(
             Ok(())
         }
         AtomicSwapInstruction::SLPTokenPayment {
-            id,
             secret_hash,
             lock_time,
             amount,
@@ -96,12 +91,11 @@ pub fn process_instruction(
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
-            let receiver_account = next_account_info(accounts_iter)?;
-            let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
             hasher.hash(sender_account.key.as_ref());
+            hasher.hash(&secret_hash);
             hasher.hash(&token_program.to_bytes());
             let amount_bytes = amount.to_le_bytes();
             hasher.hash(&amount_bytes);
@@ -130,7 +124,6 @@ pub fn process_instruction(
             Ok(())
         }
         AtomicSwapInstruction::ReceiverSpend {
-            id,
             secret,
             amount,
             sender,
@@ -138,16 +131,16 @@ pub fn process_instruction(
         } => {
             msg!("Processing ReceiverSpend");
             let accounts_iter = &mut accounts.iter();
-            let sender_account = next_account_info(accounts_iter)?;
+            let receiver_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
-            let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             let mut hasher = Hasher::default();
             hasher.hash(&secret);
             let secret_hash = hasher.result();
 
             let mut hasher = Hasher::default();
-            hasher.hash(sender_account.key.as_ref());
+            hasher.hash(receiver_account.key.as_ref());
             hasher.hash(&sender.to_bytes());
             hasher.hash(&secret_hash.to_bytes());
             hasher.hash(&token_program.to_bytes());
@@ -179,41 +172,41 @@ pub fn process_instruction(
 
             // Store the data
             data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
-            let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
-            if token_program == zero_address {
-                // Native SOL transfer
-                let transfer_instruction =
-                    system_instruction::transfer(swap_account.key, sender_account.key, amount);
+            /*let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
+            if token_program == zero_address {*/
+            // Native SOL transfer
+            let transfer_instruction =
+                system_instruction::transfer(swap_account.key, receiver_account.key, amount);
 
-                invoke(
-                    &transfer_instruction,
-                    &[swap_account.clone(), sender_account.clone()],
+            invoke(
+                &transfer_instruction,
+                &[swap_account.clone(), receiver_account.clone()],
+            )?;
+            /* } else {
+                // SPL Token transfer
+                let source_token_account = next_account_info(accounts_iter)?;
+                let destination_token_account = next_account_info(accounts_iter)?;
+
+                let token_transfer_instruction = spl_transfer(
+                    &spl_token::id(),
+                    source_token_account.key,
+                    destination_token_account.key,
+                    swap_account.key, // Owner of the source token account
+                    &[&swap_account.key],
+                    amount,
                 )?;
-            } /* else {
-                  // SPL Token transfer
-                  let source_token_account = next_account_info(accounts_iter)?;
-                  let destination_token_account = next_account_info(accounts_iter)?;
 
-                  let token_transfer_instruction = spl_transfer(
-                      &spl_token::id(),
-                      source_token_account.key,
-                      destination_token_account.key,
-                      swap_account.key, // Owner of the source token account
-                      &[&swap_account.key],
-                      amount,
-                  )?;
-
-                  invoke_signed(
-                      &token_transfer_instruction,
-                      &[
-                          token_program.clone(),
-                          source_token_account.clone(),
-                          destination_token_account.clone(),
-                          swap_account.clone(),
-                      ],
-                      &[&[&[...]]], // Provide the correct signer seeds
-                  )?;
-              }*/
+                invoke_signed(
+                    &token_transfer_instruction,
+                    &[
+                        token_program.clone(),
+                        source_token_account.clone(),
+                        destination_token_account.clone(),
+                        swap_account.clone(),
+                    ],
+                    &[&[&[...]]], // Provide the correct signer seeds
+                )?;
+            }*/
 
             //Disclose the secret
             msg!(
@@ -224,7 +217,6 @@ pub fn process_instruction(
             Ok(())
         }
         AtomicSwapInstruction::SenderRefund {
-            id,
             secret_hash,
             amount,
             receiver,
@@ -234,11 +226,11 @@ pub fn process_instruction(
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
-            let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             let mut hasher = Hasher::default();
-            hasher.hash(sender_account.key.as_ref());
             hasher.hash(&receiver.to_bytes());
+            hasher.hash(sender_account.key.as_ref());
             hasher.hash(&secret_hash);
             hasher.hash(&token_program.to_bytes());
             let amount_bytes = amount.to_le_bytes(); // Assuming `amount` is u64
@@ -274,41 +266,41 @@ pub fn process_instruction(
 
             // Store the data
             data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
-            let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
-            if token_program == zero_address {
-                // Native SOL transfer
-                let transfer_instruction =
-                    system_instruction::transfer(swap_account.key, sender_account.key, amount);
+            /*let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
+            if token_program == zero_address {*/
+            // Native SOL transfer
+            let transfer_instruction =
+                system_instruction::transfer(swap_account.key, sender_account.key, amount);
 
-                invoke(
-                    &transfer_instruction,
-                    &[swap_account.clone(), sender_account.clone()],
+            invoke(
+                &transfer_instruction,
+                &[swap_account.clone(), sender_account.clone()],
+            )?;
+            /*}  else {
+                // SPL Token transfer
+                let source_token_account = next_account_info(accounts_iter)?;
+                let destination_token_account = next_account_info(accounts_iter)?;
+
+                let token_transfer_instruction = spl_transfer(
+                    &spl_token::id(),
+                    source_token_account.key,
+                    destination_token_account.key,
+                    swap_account.key, // Owner of the source token account
+                    &[&swap_account.key],
+                    amount,
                 )?;
-            } /* else {
-                  // SPL Token transfer
-                  let source_token_account = next_account_info(accounts_iter)?;
-                  let destination_token_account = next_account_info(accounts_iter)?;
 
-                  let token_transfer_instruction = spl_transfer(
-                      &spl_token::id(),
-                      source_token_account.key,
-                      destination_token_account.key,
-                      swap_account.key, // Owner of the source token account
-                      &[&swap_account.key],
-                      amount,
-                  )?;
-
-                  invoke_signed(
-                      &token_transfer_instruction,
-                      &[
-                          token_program.clone(),
-                          source_token_account.clone(),
-                          destination_token_account.clone(),
-                          swap_account.clone(),
-                      ],
-                      &[&[&[...]]], // Provide the correct signer seeds
-                  )?;
-              }*/
+                invoke_signed(
+                    &token_transfer_instruction,
+                    &[
+                        token_program.clone(),
+                        source_token_account.clone(),
+                        destination_token_account.clone(),
+                        swap_account.clone(),
+                    ],
+                    &[&[&[...]]], // Provide the correct signer seeds
+                )?;
+            }*/
 
             //Disclose the secret
             msg!("Swap account: {:?}", swap_account.key);
