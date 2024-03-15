@@ -1,3 +1,7 @@
+use crate::error_code::{
+    AMOUNT_ZERO, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE, RECEIVER_SET_TO_DEFAULT,
+    SWAP_ACCOUNT_NOT_FOUND,
+};
 use crate::instruction::AtomicSwapInstruction;
 use crate::payment::{Payment, PaymentState};
 use solana_program::{
@@ -21,8 +25,7 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let instruction = AtomicSwapInstruction::unpack(instruction_data[0], instruction_data)
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
+    let instruction = AtomicSwapInstruction::unpack(instruction_data[0], instruction_data)?;
 
     match instruction {
         AtomicSwapInstruction::LamportsPayment {
@@ -33,10 +36,10 @@ pub fn process_instruction(
         } => {
             msg!("Processing Payment");
             if receiver == Pubkey::default() {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(RECEIVER_SET_TO_DEFAULT));
             }
             if amount <= 0 {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(AMOUNT_ZERO));
             }
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
@@ -83,10 +86,10 @@ pub fn process_instruction(
         } => {
             msg!("Processing Payment");
             if receiver == Pubkey::default() {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(RECEIVER_SET_TO_DEFAULT));
             }
             if amount <= 0 {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(AMOUNT_ZERO));
             }
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
@@ -151,13 +154,13 @@ pub fn process_instruction(
 
             let swap_account_data = swap_account
                 .try_borrow_data()
-                .map_err(|_| ProgramError::InvalidInstructionData)?;
+                .map_err(|_| ProgramError::Custom(SWAP_ACCOUNT_NOT_FOUND))?;
             let mut swap_payment = Payment::unpack(&swap_account_data)?;
             if swap_payment.payment_hash != payment_hash.to_bytes() {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(INVALID_PAYMENT_HASH));
             }
             if swap_payment.state != PaymentState::PaymentSent {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(INVALID_PAYMENT_STATE));
             }
 
             swap_payment.state = PaymentState::ReceiverSpent;
@@ -240,7 +243,7 @@ pub fn process_instruction(
 
             let swap_account_data = swap_account
                 .try_borrow_data()
-                .map_err(|_| ProgramError::InvalidInstructionData)?;
+                .map_err(|_| ProgramError::Custom(SWAP_ACCOUNT_NOT_FOUND))?;
             let mut swap_payment = Payment::unpack(&swap_account_data)?;
 
             let clock = Clock::get()?;
@@ -248,10 +251,10 @@ pub fn process_instruction(
 
             if swap_payment.payment_hash != payment_hash.to_bytes() && now >= swap_payment.lock_time
             {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(INVALID_PAYMENT_HASH));
             }
             if swap_payment.state != PaymentState::PaymentSent {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(ProgramError::Custom(INVALID_PAYMENT_STATE));
             }
 
             swap_payment.state = PaymentState::SenderRefunded;

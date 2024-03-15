@@ -1,14 +1,13 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::program_error::ProgramError;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(Debug)]
 pub struct Payment {
     pub payment_hash: [u8; 32],
     pub lock_time: u64,
     pub state: PaymentState,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum PaymentState {
     Uninitialized,
     PaymentSent,
