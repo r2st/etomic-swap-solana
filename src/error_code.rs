@@ -12,3 +12,4 @@ pub const AMOUNT_ZERO: u32 = 611;
 pub const SWAP_ACCOUNT_NOT_FOUND: u32 = 612;
 pub const INVALID_PAYMENT_HASH: u32 = 613;
 pub const INVALID_PAYMENT_STATE: u32 = 614;
+pub const NOT_SUPPORTED: u32 = 615;

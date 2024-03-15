@@ -1,6 +1,6 @@
 use crate::error_code::{
-    AMOUNT_ZERO, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE, RECEIVER_SET_TO_DEFAULT,
-    SWAP_ACCOUNT_NOT_FOUND,
+    AMOUNT_ZERO, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE, NOT_SUPPORTED,
+    RECEIVER_SET_TO_DEFAULT, SWAP_ACCOUNT_NOT_FOUND,
 };
 use crate::instruction::AtomicSwapInstruction;
 use crate::payment::{Payment, PaymentState};
@@ -49,7 +49,7 @@ pub fn process_instruction(
             hasher.hash(&receiver.to_bytes());
             hasher.hash(sender_account.key.as_ref());
             hasher.hash(&secret_hash);
-            let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
+            let zero_address = Pubkey::new_from_array([0; 32]); // This is a pubkey filled with zeros
             hasher.hash(&zero_address.to_bytes());
             let amount_bytes = amount.to_le_bytes();
             hasher.hash(&amount_bytes);
@@ -63,16 +63,31 @@ pub fn process_instruction(
             };
             let payment_bytes = payment.pack();
 
-            let data = &mut swap_account.try_borrow_mut_data()?;
-            // Ensure the account data has enough space
-            if data.len() < payment_bytes.len() {
-                msg!("Error: Account data buffer too small");
-                return Err(ProgramError::AccountDataTooSmall);
+            {
+                let data = &mut swap_account.try_borrow_mut_data()?;
+                // Ensure the account data has enough space
+                if data.len() < payment_bytes.len() {
+                    msg!("Error: Account data buffer too small");
+                    return Err(ProgramError::AccountDataTooSmall);
+                }
+
+                // Store the data
+                data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
             }
 
-            // Store the data
-            data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
+            // Native SOL transfer
+            let transfer_instruction = system_instruction::transfer(
+                sender_account.key, // From
+                swap_account.key,   // To
+                amount,             // Amount in lamports
+            );
 
+            let account_infos = vec![
+                sender_account.clone(), // The source of the funds, must be a signer
+                swap_account.clone(),   // The destination of the funds
+            ];
+
+            let _ = invoke(&transfer_instruction, &account_infos)?;
             // Log the payment event
             msg!("Payment Event: {:?}", payment);
             Ok(())
@@ -136,7 +151,8 @@ pub fn process_instruction(
             let accounts_iter = &mut accounts.iter();
             let receiver_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
-            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            let system_program_account = next_account_info(accounts_iter)?; // System Program account
+                                                                            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             let mut hasher = Hasher::default();
             hasher.hash(&secret);
@@ -152,42 +168,55 @@ pub fn process_instruction(
 
             let payment_hash = hasher.result();
 
-            let swap_account_data = swap_account
-                .try_borrow_data()
-                .map_err(|_| ProgramError::Custom(SWAP_ACCOUNT_NOT_FOUND))?;
-            let mut swap_payment = Payment::unpack(&swap_account_data)?;
-            if swap_payment.payment_hash != payment_hash.to_bytes() {
-                return Err(ProgramError::Custom(INVALID_PAYMENT_HASH));
+            {
+                let swap_account_data = &mut swap_account
+                    .try_borrow_mut_data()
+                    .map_err(|_| ProgramError::Custom(SWAP_ACCOUNT_NOT_FOUND))?;
+                let mut swap_payment = Payment::unpack(&swap_account_data)?;
+                if swap_payment.payment_hash != payment_hash.to_bytes() {
+                    msg!("swap_account payment_hash: {:?}", swap_payment.payment_hash);
+                    msg!("payment_hash: {:?}", payment_hash.to_bytes());
+                    return Err(ProgramError::Custom(INVALID_PAYMENT_HASH));
+                }
+                if swap_payment.state != PaymentState::PaymentSent {
+                    return Err(ProgramError::Custom(INVALID_PAYMENT_STATE));
+                }
+
+                swap_payment.state = PaymentState::ReceiverSpent;
+                let payment_bytes = swap_payment.pack();
+
+                // Ensure the account data has enough space
+                if swap_account_data.len() < payment_bytes.len() {
+                    msg!("Error: Account data buffer too small");
+                    return Err(ProgramError::AccountDataTooSmall);
+                }
+
+                // Store the data
+                swap_account_data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
             }
-            if swap_payment.state != PaymentState::PaymentSent {
-                return Err(ProgramError::Custom(INVALID_PAYMENT_STATE));
-            }
+            if token_program == Pubkey::new_from_array([0; 32]) {
+                // Native SOL transfer
+                let transfer_instruction = system_instruction::transfer(
+                    swap_account.key,     // From
+                    receiver_account.key, // To
+                    amount,               // Amount in lamports
+                );
 
-            swap_payment.state = PaymentState::ReceiverSpent;
-            let payment_bytes = swap_payment.pack();
+                let account_infos = vec![
+                    swap_account.clone(),     // Though owned by the program, included for the CPI
+                    receiver_account.clone(), // The destination of the funds
+                    system_program_account.clone(), // The System Program
+                ];
 
-            let data = &mut swap_account.try_borrow_mut_data()?;
-            // Ensure the account data has enough space
-            if data.len() < payment_bytes.len() {
-                msg!("Error: Account data buffer too small");
-                return Err(ProgramError::AccountDataTooSmall);
-            }
-
-            // Store the data
-            data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
-            /*let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
-            if token_program == zero_address {*/
-            // Native SOL transfer
-            let transfer_instruction =
-                system_instruction::transfer(swap_account.key, receiver_account.key, amount);
-
-            invoke(
-                &transfer_instruction,
-                &[swap_account.clone(), receiver_account.clone()],
-            )?;
-            /* } else {
+                /*let _ = invoke(
+                    &transfer_instruction,
+                    &account_infos,
+                )?;*/
+            } else {
                 // SPL Token transfer
-                let source_token_account = next_account_info(accounts_iter)?;
+                msg!("Not Supported: SPL Token transfer");
+                return Err(ProgramError::Custom(NOT_SUPPORTED));
+                /*let source_token_account = next_account_info(accounts_iter)?;
                 let destination_token_account = next_account_info(accounts_iter)?;
 
                 let token_transfer_instruction = spl_transfer(
@@ -208,8 +237,8 @@ pub fn process_instruction(
                         swap_account.clone(),
                     ],
                     &[&[&[...]]], // Provide the correct signer seeds
-                )?;
-            }*/
+                )?;*/
+            }
 
             //Disclose the secret
             msg!(
@@ -229,7 +258,8 @@ pub fn process_instruction(
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
-            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            let system_program_account = next_account_info(accounts_iter)?; // System Program account
+                                                                            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
@@ -241,8 +271,8 @@ pub fn process_instruction(
 
             let payment_hash = hasher.result();
 
-            let swap_account_data = swap_account
-                .try_borrow_data()
+            let swap_account_data = &mut swap_account
+                .try_borrow_mut_data()
                 .map_err(|_| ProgramError::Custom(SWAP_ACCOUNT_NOT_FOUND))?;
             let mut swap_payment = Payment::unpack(&swap_account_data)?;
 
@@ -260,28 +290,37 @@ pub fn process_instruction(
             swap_payment.state = PaymentState::SenderRefunded;
             let payment_bytes = swap_payment.pack();
 
-            let data = &mut swap_account.try_borrow_mut_data()?;
             // Ensure the account data has enough space
-            if data.len() < payment_bytes.len() {
+            if swap_account_data.len() < payment_bytes.len() {
                 msg!("Error: Account data buffer too small");
                 return Err(ProgramError::AccountDataTooSmall);
             }
 
             // Store the data
-            data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
-            /*let zero_address = Pubkey::default(); // This is a pubkey filled with zeros
-            if token_program == zero_address {*/
-            // Native SOL transfer
-            let transfer_instruction =
-                system_instruction::transfer(swap_account.key, sender_account.key, amount);
+            swap_account_data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
+            if token_program == Pubkey::new_from_array([0; 32]) {
+                // Native SOL transfer
+                let transfer_instruction = system_instruction::transfer(
+                    swap_account.key,   // From
+                    sender_account.key, // To
+                    amount,             // Amount in lamports
+                );
 
-            invoke(
-                &transfer_instruction,
-                &[swap_account.clone(), sender_account.clone()],
-            )?;
-            /*}  else {
+                let account_infos = vec![
+                    swap_account.clone(),   // Though owned by the program, included for the CPI
+                    sender_account.clone(), // The destination of the funds
+                    system_program_account.clone(), // The System Program
+                ];
+
+                /*let _ = invoke(
+                    &transfer_instruction,
+                    &account_infos,
+                )?;*/
+            } else {
                 // SPL Token transfer
-                let source_token_account = next_account_info(accounts_iter)?;
+                msg!("Not Supported: SPL Token transfer");
+                return Err(ProgramError::Custom(NOT_SUPPORTED));
+                /*let source_token_account = next_account_info(accounts_iter)?;
                 let destination_token_account = next_account_info(accounts_iter)?;
 
                 let token_transfer_instruction = spl_transfer(
@@ -302,8 +341,8 @@ pub fn process_instruction(
                         swap_account.clone(),
                     ],
                     &[&[&[...]]], // Provide the correct signer seeds
-                )?;
-            }*/
+                )?;*/
+            }
 
             //Disclose the secret
             msg!("Swap account: {:?}", swap_account.key);
