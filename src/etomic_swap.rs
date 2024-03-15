@@ -1,9 +1,10 @@
 use crate::error_code::{
-    AMOUNT_ZERO, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE, NOT_SUPPORTED,
+    AMOUNT_ZERO, INVALID_OWNER, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE, NOT_SUPPORTED,
     RECEIVER_SET_TO_DEFAULT, SWAP_ACCOUNT_NOT_FOUND,
 };
 use crate::instruction::AtomicSwapInstruction;
 use crate::payment::{Payment, PaymentState};
+use solana_program::program::invoke_signed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint,
@@ -13,7 +14,7 @@ use solana_program::{
     program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
+    system_instruction, system_program,
     sysvar::clock::Clock,
     sysvar::Sysvar,
 };
@@ -21,7 +22,7 @@ use solana_program::{
 entrypoint!(process_instruction);
 
 pub fn process_instruction(
-    _program_id: &Pubkey,
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
@@ -149,10 +150,29 @@ pub fn process_instruction(
         } => {
             msg!("Processing ReceiverSpend");
             let accounts_iter = &mut accounts.iter();
-            let receiver_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
+            let receiver_account = next_account_info(accounts_iter)?;
+            let vault_pda = next_account_info(accounts_iter)?;
             let system_program_account = next_account_info(accounts_iter)?; // System Program account
                                                                             //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+
+            assert!(receiver_account.is_writable);
+            assert!(receiver_account.is_signer);
+            assert!(vault_pda.is_writable);
+            assert_eq!(vault_pda.owner, &system_program::ID);
+            assert!(system_program::check_id(system_program_account.key));
+
+            let vault_bump_seed = instruction_data[instruction_data.len() - 1];
+            //let vault_seeds = &[b"vault", receiver_account.key.as_ref(), &[vault_bump_seed]];
+            let vault_seeds: &[&[_]] =
+                &[b"swap", receiver_account.key.as_ref(), &[vault_bump_seed]];
+            let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
+
+            assert_eq!(vault_pda.key, &expected_vault_pda);
+
+            if swap_account.owner != program_id {
+                return Err(ProgramError::Custom(INVALID_OWNER));
+            }
 
             let mut hasher = Hasher::default();
             hasher.hash(&secret);
@@ -207,11 +227,11 @@ pub fn process_instruction(
                     receiver_account.clone(), // The destination of the funds
                     system_program_account.clone(), // The System Program
                 ];
+                let bump_seed = instruction_data[instruction_data.len() - 1];
 
-                /*let _ = invoke(
-                    &transfer_instruction,
-                    &account_infos,
-                )?;*/
+                let seeds: &[&[_]] = &[b"swap", receiver_account.key.as_ref(), &[bump_seed]];
+
+                let _ = invoke_signed(&transfer_instruction, &account_infos, &[seeds])?;
             } else {
                 // SPL Token transfer
                 msg!("Not Supported: SPL Token transfer");

@@ -186,7 +186,7 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         accounts: vec![
             AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
             AccountMeta::new(values.swap_account.pubkey(), false),  // Not a signer
-            AccountMeta::new_readonly(values.system_program, false), //system_program must be included
+            AccountMeta::new(values.system_program, false), //system_program must be included
         ],
         data, // The packed instruction data expected by your program
     };
@@ -251,22 +251,27 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
     /*let swap_instruction = AtomicSwapInstruction::SenderRefund{
         secret_hash, amount, receiver, token_program,
     };*/
-    let data = swap_instruction.pack();
+    let mut data = swap_instruction.pack();
 
+    values.recent_blockhash = values.banks_client.get_latest_blockhash().await?;
+    let receiver_account_pubkey = values.receiver_account.pubkey();
+    let seeds = &[b"swap", receiver_account_pubkey.as_ref()];
+    let (vault_pda, bump_seed) = Pubkey::find_program_address(seeds, &values.program_id);
+    data.push(bump_seed);
     let instruction = Instruction {
         program_id: values.program_id,
         // Make sure the sender_account is marked as a signer and the swap_account is not
         accounts: vec![
+            AccountMeta::new(values.swap_account.pubkey(), false), // Not a signer
             AccountMeta::new(values.receiver_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.swap_account.pubkey(), false),    // Not a signer
-            AccountMeta::new_readonly(values.system_program, false), //system_program must be included
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new(values.system_program, false), //system_program must be included
         ],
         data, // The packed instruction data expected by your program
     };
 
     let mut transaction =
         Transaction::new_with_payer(&[instruction], Some(&values.receiver_account.pubkey()));
-
     // Sign the transaction with the receiver_account, as it's required to authorize the transfer
     transaction.sign(
         &[&values.receiver_account], // Only the receiver_account needs to sign
