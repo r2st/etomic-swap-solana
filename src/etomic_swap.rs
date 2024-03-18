@@ -45,6 +45,7 @@ pub fn process_instruction(
             let accounts_iter = &mut accounts.iter();
             let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
+            let vault_pda = next_account_info(accounts_iter)?;
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
@@ -79,13 +80,13 @@ pub fn process_instruction(
             // Native SOL transfer
             let transfer_instruction = system_instruction::transfer(
                 sender_account.key, // From
-                swap_account.key,   // To
+                vault_pda.key,      // To
                 amount,             // Amount in lamports
             );
 
             let account_infos = vec![
                 sender_account.clone(), // The source of the funds, must be a signer
-                swap_account.clone(),   // The destination of the funds
+                vault_pda.clone(),      // The destination of the funds
             ];
 
             let _ = invoke(&transfer_instruction, &account_infos)?;
@@ -158,13 +159,13 @@ pub fn process_instruction(
 
             assert!(receiver_account.is_writable);
             assert!(receiver_account.is_signer);
+            assert!(swap_account.is_writable);
             assert!(vault_pda.is_writable);
             assert_eq!(vault_pda.owner, &system_program::ID);
             assert!(system_program::check_id(system_program_account.key));
 
             let vault_bump_seed = instruction_data[instruction_data.len() - 1];
-            //let vault_seeds = &[b"vault", receiver_account.key.as_ref(), &[vault_bump_seed]];
-            let vault_seeds: &[&[_]] =
+            let vault_seeds: &[&[u8]] =
                 &[b"swap", receiver_account.key.as_ref(), &[vault_bump_seed]];
             let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
 
@@ -217,21 +218,18 @@ pub fn process_instruction(
             if token_program == Pubkey::new_from_array([0; 32]) {
                 // Native SOL transfer
                 let transfer_instruction = system_instruction::transfer(
-                    swap_account.key,     // From
+                    vault_pda.key,        // From
                     receiver_account.key, // To
                     amount,               // Amount in lamports
                 );
 
                 let account_infos = vec![
-                    swap_account.clone(),     // Though owned by the program, included for the CPI
-                    receiver_account.clone(), // The destination of the funds
+                    vault_pda.clone(),              // Though owned by the program, included for the CPI
+                    receiver_account.clone(),       // The destination of the funds
                     system_program_account.clone(), // The System Program
                 ];
-                let bump_seed = instruction_data[instruction_data.len() - 1];
 
-                let seeds: &[&[_]] = &[b"swap", receiver_account.key.as_ref(), &[bump_seed]];
-
-                let _ = invoke_signed(&transfer_instruction, &account_infos, &[seeds])?;
+                let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
             } else {
                 // SPL Token transfer
                 msg!("Not Supported: SPL Token transfer");
@@ -276,10 +274,28 @@ pub fn process_instruction(
         } => {
             msg!("Processing SenderRefund");
             let accounts_iter = &mut accounts.iter();
-            let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
+            let sender_account = next_account_info(accounts_iter)?;
+            let vault_pda = next_account_info(accounts_iter)?;
             let system_program_account = next_account_info(accounts_iter)?; // System Program account
                                                                             //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+
+            assert!(sender_account.is_writable);
+            assert!(sender_account.is_signer);
+            assert!(swap_account.is_writable);
+            assert!(vault_pda.is_writable);
+            assert_eq!(vault_pda.owner, &system_program::ID);
+            assert!(system_program::check_id(system_program_account.key));
+
+            let vault_bump_seed = instruction_data[instruction_data.len() - 1];
+            let vault_seeds: &[&[u8]] = &[b"swap", receiver.as_ref(), &[vault_bump_seed]];
+            let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
+
+            assert_eq!(vault_pda.key, &expected_vault_pda);
+
+            if swap_account.owner != program_id {
+                return Err(ProgramError::Custom(INVALID_OWNER));
+            }
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
@@ -321,21 +337,18 @@ pub fn process_instruction(
             if token_program == Pubkey::new_from_array([0; 32]) {
                 // Native SOL transfer
                 let transfer_instruction = system_instruction::transfer(
-                    swap_account.key,   // From
+                    vault_pda.key,      // From
                     sender_account.key, // To
                     amount,             // Amount in lamports
                 );
 
                 let account_infos = vec![
-                    swap_account.clone(),   // Though owned by the program, included for the CPI
-                    sender_account.clone(), // The destination of the funds
+                    vault_pda.clone(),              // Though owned by the program, included for the CPI
+                    sender_account.clone(),         // The destination of the funds
                     system_program_account.clone(), // The System Program
                 ];
 
-                /*let _ = invoke(
-                    &transfer_instruction,
-                    &account_infos,
-                )?;*/
+                let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
             } else {
                 // SPL Token transfer
                 msg!("Not Supported: SPL Token transfer");
