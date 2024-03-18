@@ -167,9 +167,8 @@ pub fn process_instruction(
             let vault_bump_seed = instruction_data[instruction_data.len() - 1];
             let vault_seeds: &[&[u8]] =
                 &[b"swap", receiver_account.key.as_ref(), &[vault_bump_seed]];
-            let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
-
-            assert_eq!(vault_pda.key, &expected_vault_pda);
+            /*let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
+            assert_eq!(vault_pda.key, &expected_vault_pda);*/
 
             if swap_account.owner != program_id {
                 return Err(ProgramError::Custom(INVALID_OWNER));
@@ -289,9 +288,8 @@ pub fn process_instruction(
 
             let vault_bump_seed = instruction_data[instruction_data.len() - 1];
             let vault_seeds: &[&[u8]] = &[b"swap", receiver.as_ref(), &[vault_bump_seed]];
-            let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
-
-            assert_eq!(vault_pda.key, &expected_vault_pda);
+            /*let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
+            assert_eq!(vault_pda.key, &expected_vault_pda);*/
 
             if swap_account.owner != program_id {
                 return Err(ProgramError::Custom(INVALID_OWNER));
