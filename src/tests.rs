@@ -267,10 +267,10 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         program_id: values.program_id,
         // Make sure the sender_account is marked as a signer and the swap_account is not
         accounts: vec![
+            AccountMeta::new(values.swap_account.pubkey(), false), // Not a signer
             AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.swap_account.pubkey(), false),  // Not a signer
-            AccountMeta::new(values.vault_pda, false),              // Not a signer
-            AccountMeta::new(values.system_program, false), //system_program must be included
+            AccountMeta::new(values.vault_pda, false),             // Not a signer
+            AccountMeta::new(values.system_program, false),        //system_program must be included
         ],
         data, // The packed instruction data expected by your program
     };

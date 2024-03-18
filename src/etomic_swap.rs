@@ -43,8 +43,8 @@ pub fn process_instruction(
                 return Err(ProgramError::Custom(AMOUNT_ZERO));
             }
             let accounts_iter = &mut accounts.iter();
-            let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
+            let sender_account = next_account_info(accounts_iter)?;
             let vault_pda = next_account_info(accounts_iter)?;
 
             let mut hasher = Hasher::default();
@@ -109,8 +109,8 @@ pub fn process_instruction(
                 return Err(ProgramError::Custom(AMOUNT_ZERO));
             }
             let accounts_iter = &mut accounts.iter();
-            let sender_account = next_account_info(accounts_iter)?;
             let swap_account = next_account_info(accounts_iter)?;
+            let sender_account = next_account_info(accounts_iter)?;
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
