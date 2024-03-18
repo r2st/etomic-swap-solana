@@ -115,8 +115,8 @@ impl AtomicSwapInstruction {
                 })
             }
             2 => {
-                if input.len() != 105 {
-                    // 1 + 32 + 8 + 32 + 32
+                if input.len() != 106 {
+                    // 1 + 32 + 8 + 32 + 32 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -149,8 +149,8 @@ impl AtomicSwapInstruction {
                 })
             }
             3 => {
-                if input.len() != 105 {
-                    // 1 + 32 + 8 + 32 + 32
+                if input.len() != 106 {
+                    // 1 + 32 + 8 + 32 + 32 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
