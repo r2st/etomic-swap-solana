@@ -17,7 +17,6 @@ pub struct InitializeValues {
     context: ProgramTestContext,
     sender_account: Keypair,
     receiver_account: Keypair,
-    swap_account: Keypair,
     lamports_initial_balance: u64,
     rent_exemption_lamports: u64,
     secret: [u8; 32],
@@ -29,6 +28,8 @@ pub struct InitializeValues {
     sender: Pubkey,
     vault_pda: Pubkey,
     bump_seed: u8,
+    vault_pda_data: Pubkey,
+    bump_seed_data: u8,
     fee: u64,
 }
 
@@ -46,7 +47,6 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     // Setup accounts
     let sender_account = Keypair::new();
     let receiver_account = Keypair::new();
-    let swap_account = Keypair::new();
     let lamports_initial_balance = 1000000000;
 
     let transfer_instruction = solana_program::system_instruction::transfer(
@@ -118,9 +118,9 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
 
     // Create a system instruction to transfer the necessary lamports
     // to the swap account for it to be rent-exempt
-    let create_account_instruction = system_instruction::create_account(
+    /*let create_account_instruction = system_instruction::create_account(
         &context.payer.pubkey(),
-        &swap_account.pubkey(),
+        &vault_pda.pubkey(),
         rent_exemption_lamports,
         41,          // Space in bytes for the account data
         &program_id, // The owner program ID
@@ -129,7 +129,7 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     // Create and sign a transaction for the account creation and funding
     let mut transaction =
         Transaction::new_with_payer(&[create_account_instruction], Some(&context.payer.pubkey()));
-    transaction.sign(&[&context.payer, &swap_account], context.last_blockhash);
+    transaction.sign(&[&context.payer, &vault_pda], context.last_blockhash);
 
     // Process the transaction
     context
@@ -137,24 +137,26 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         .process_transaction(transaction)
         .await?;
 
-    let assign_instruction = system_instruction::assign(&swap_account.pubkey(), &program_id);
+    let assign_instruction = system_instruction::assign(&vault_pda.pubkey(), &program_id);
 
     let mut transaction =
         Transaction::new_with_payer(&[assign_instruction], Some(&context.payer.pubkey()));
-    transaction.sign(&[&context.payer, &swap_account], context.last_blockhash);
+    transaction.sign(&[&context.payer, &vault_pda], context.last_blockhash);
     context
         .banks_client
         .process_transaction(transaction)
         .await
-        .unwrap();
+        .unwrap();*/
 
     //For Vault PDA
 
     let receiver_account_pubkey = receiver_account.pubkey();
     let seeds: &[&[u8]] = &[b"swap", receiver_account_pubkey.as_ref()];
-    //let seed_str = std::str::from_utf8(seeds[0]).expect("Invalid UTF-8");
     let (vault_pda, bump_seed) = Pubkey::find_program_address(seeds, &program_id);
+    let seeds_data: &[&[u8]] = &[b"swap_data", receiver_account_pubkey.as_ref()];
+    let (vault_pda_data, bump_seed_data) = Pubkey::find_program_address(seeds_data, &program_id);
 
+    //let seed_str = std::str::from_utf8(seeds[0]).expect("Invalid UTF-8");
     /*let transfer_instruction = system_instruction::transfer(
         &context.payer.pubkey(),
         &vault_pda,
@@ -222,7 +224,6 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         context,
         sender_account,
         receiver_account,
-        swap_account,
         lamports_initial_balance,
         rent_exemption_lamports,
         secret,
@@ -234,6 +235,8 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         sender,
         vault_pda,
         bump_seed,
+        vault_pda_data,
+        bump_seed_data,
         fee: 5000,
     })
 }
@@ -245,7 +248,7 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         .banks_client
         .get_balance(values.sender_account.pubkey())
         .await?;
-    let swap_account_balance = values
+    let vault_pda_balance = values
         .context
         .banks_client
         .get_balance(values.vault_pda)
@@ -256,7 +259,7 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
     );
     println!(
         "before submit_payment: vault_pda balance: {}",
-        swap_account_balance
+        vault_pda_balance
     );
     let swap_instruction = AtomicSwapInstruction::LamportsPayment {
         secret_hash: values.secret_hash,
@@ -265,16 +268,17 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         receiver: values.receiver,
         rent_exemption_lamports: values.rent_exemption_lamports,
         vault_bump_seed: values.bump_seed,
+        vault_bump_seed_data: values.bump_seed_data,
     };
     let data = swap_instruction.pack();
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the swap_account is not
+        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
-            AccountMeta::new(values.swap_account.pubkey(), false), // Not a signer
             AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.vault_pda, false),             // Not a signer
-            AccountMeta::new(values.system_program, false),        //system_program must be included
+            AccountMeta::new(values.vault_pda_data, false),         // Not a signer
+            AccountMeta::new(values.vault_pda, false),              // Not a signer
+            AccountMeta::new(values.system_program, false), //system_program must be included
         ],
         data, // The packed instruction data expected by your program
     };
@@ -300,7 +304,7 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         .banks_client
         .get_balance(values.sender_account.pubkey())
         .await?;
-    let swap_account_balance_after = values
+    let vault_pda_balance_after = values
         .context
         .banks_client
         .get_balance(values.vault_pda)
@@ -310,16 +314,16 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         sender_account_balance_after
     );
     println!(
-        "after submit_payment: swap_account balance: {}",
-        swap_account_balance_after
+        "after submit_payment: vault_pda balance: {}",
+        vault_pda_balance_after
     );
     assert_eq!(
         sender_account_balance_after,
-        sender_account_balance - (values.fee + values.amount + values.rent_exemption_lamports)
+        sender_account_balance - (values.fee + values.amount + values.rent_exemption_lamports * 2)
     );
     assert_eq!(
-        swap_account_balance_after,
-        swap_account_balance + values.amount + values.rent_exemption_lamports
+        vault_pda_balance_after,
+        vault_pda_balance + values.amount + values.rent_exemption_lamports
     );
     Ok(values)
 }
@@ -330,7 +334,7 @@ async fn submit_payment_vault() -> Result<InitializeValues, Box<dyn std::error::
         .banks_client
         .get_balance(values.sender_account.pubkey())
         .await?;
-    let swap_account_balance = values
+    let vault_pda_balance = values
         .banks_client
         .get_balance(values.vault_pda)
         .await?;
@@ -340,7 +344,7 @@ async fn submit_payment_vault() -> Result<InitializeValues, Box<dyn std::error::
     );
     println!(
         "before submit_payment: vault_pda balance: {}",
-        swap_account_balance
+        vault_pda_balance
     );*/
     /*let swap_instruction = AtomicSwapInstruction::LamportsPayment {
         secret_hash: values.secret_hash,
@@ -351,7 +355,7 @@ async fn submit_payment_vault() -> Result<InitializeValues, Box<dyn std::error::
     let data = swap_instruction.pack();
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the swap_account is not
+        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
             AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
             AccountMeta::new(values.vault_pda, false),  // Not a signer
@@ -376,7 +380,7 @@ async fn submit_payment_vault() -> Result<InitializeValues, Box<dyn std::error::
         .banks_client
         .get_balance(values.sender_account.pubkey())
         .await?;
-    let swap_account_balance_after = values
+    let vault_pda_balance_after = values
         .banks_client
         .get_balance(values.vault_pda)
         .await?;
@@ -385,16 +389,16 @@ async fn submit_payment_vault() -> Result<InitializeValues, Box<dyn std::error::
         sender_account_balance_after
     );
     println!(
-        "after submit_payment: swap_account balance: {}",
-        swap_account_balance_after
+        "after submit_payment: vault_pda balance: {}",
+        vault_pda_balance_after
     );
     assert_eq!(
         sender_account_balance_after,
         sender_account_balance - (values.fee + values.amount)
     );
     assert_eq!(
-        swap_account_balance_after,
-        swap_account_balance + (values.amount)
+        vault_pda_balance_after,
+        vault_pda_balance + (values.amount)
     );*/
     Ok(values)
 }
@@ -413,7 +417,7 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
         .banks_client
         .get_balance(values.receiver_account.pubkey())
         .await?;
-    let swap_account_balance = values
+    let vault_pda_balance = values
         .context
         .banks_client
         .get_balance(values.vault_pda)
@@ -424,7 +428,7 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "before submit_payment: vault_pda balance: {}",
-        swap_account_balance
+        vault_pda_balance
     );
     /*let swap_instruction = AtomicSwapInstruction::SLPTokenPayment{
         secret_hash, lock_time, amount, receiver, token_program,
@@ -435,6 +439,7 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
         sender: values.sender,
         token_program: values.token_program,
         vault_bump_seed: values.bump_seed,
+        vault_bump_seed_data: values.bump_seed_data,
     };
     /*let swap_instruction = AtomicSwapInstruction::SenderRefund{
         secret_hash, amount, receiver, token_program,
@@ -444,10 +449,10 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
     values.context.last_blockhash = values.context.banks_client.get_latest_blockhash().await?;
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the swap_account is not
+        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
-            AccountMeta::new(values.swap_account.pubkey(), false), // Not a signer
             AccountMeta::new(values.receiver_account.pubkey(), true), // Marked as signer
+            AccountMeta::new(values.vault_pda_data, false),           // Not a signer
             AccountMeta::new(values.vault_pda, false),
             AccountMeta::new(values.system_program, false), //system_program must be included
         ],
@@ -474,7 +479,7 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
         .banks_client
         .get_balance(values.receiver_account.pubkey())
         .await?;
-    let swap_account_balance_after = values
+    let vault_pda_balance_after = values
         .context
         .banks_client
         .get_balance(values.vault_pda)
@@ -485,16 +490,13 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "after submit_payment: vault_pda balance: {}",
-        swap_account_balance_after
+        vault_pda_balance_after
     );
     assert_eq!(
         receiver_account_balance_after,
         (receiver_account_balance + values.amount) - values.fee
     );
-    assert_eq!(
-        swap_account_balance_after,
-        swap_account_balance - (values.amount)
-    );
+    assert_eq!(vault_pda_balance_after, vault_pda_balance - (values.amount));
 
     Ok(())
 }
@@ -507,7 +509,7 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
         .banks_client
         .get_balance(values.sender_account.pubkey())
         .await?;
-    let swap_account_balance = values
+    let vault_pda_balance = values
         .context
         .banks_client
         .get_balance(values.vault_pda)
@@ -518,7 +520,7 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "before submit_payment: vault_pda balance: {}",
-        swap_account_balance
+        vault_pda_balance
     );
     /*let swap_instruction = AtomicSwapInstruction::SLPTokenPayment{
         secret_hash, lock_time, amount, receiver, token_program,
@@ -529,16 +531,17 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
         receiver: values.receiver,
         token_program: values.token_program,
         vault_bump_seed: values.bump_seed,
+        vault_bump_seed_data: values.bump_seed_data,
     };
     let mut data = swap_instruction.pack();
 
     values.context.last_blockhash = values.context.banks_client.get_latest_blockhash().await?;
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the swap_account is not
+        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
-            AccountMeta::new(values.swap_account.pubkey(), false), // Not a signer
             AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
+            AccountMeta::new(values.vault_pda_data, false),         // Not a signer
             AccountMeta::new(values.vault_pda, false),
             AccountMeta::new(values.system_program, false), //system_program must be included
         ],
@@ -565,7 +568,7 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
         .banks_client
         .get_balance(values.sender_account.pubkey())
         .await?;
-    let swap_account_balance_after = values
+    let vault_pda_balance_after = values
         .context
         .banks_client
         .get_balance(values.vault_pda)
@@ -576,16 +579,13 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "after submit_payment: vault_pda balance: {}",
-        swap_account_balance_after
+        vault_pda_balance_after
     );
     assert_eq!(
         sender_account_balance_after,
         (sender_account_balance + values.amount) - values.fee
     );
-    assert_eq!(
-        swap_account_balance_after,
-        swap_account_balance - (values.amount)
-    );
+    assert_eq!(vault_pda_balance_after, vault_pda_balance - (values.amount));
 
     Ok(())
 }

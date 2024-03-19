@@ -14,6 +14,7 @@ pub enum AtomicSwapInstruction {
         receiver: Pubkey,
         rent_exemption_lamports: u64,
         vault_bump_seed: u8,
+        vault_bump_seed_data: u8,
     },
     SLPTokenPayment {
         secret_hash: [u8; 32], // SHA-256 hash
@@ -23,6 +24,7 @@ pub enum AtomicSwapInstruction {
         token_program: Pubkey,
         rent_exemption_lamports: u64,
         vault_bump_seed: u8,
+        vault_bump_seed_data: u8,
     },
     ReceiverSpend {
         secret: [u8; 32],
@@ -30,6 +32,7 @@ pub enum AtomicSwapInstruction {
         sender: Pubkey,
         token_program: Pubkey,
         vault_bump_seed: u8,
+        vault_bump_seed_data: u8,
     },
     SenderRefund {
         secret_hash: [u8; 32], // SHA-256 hash
@@ -37,6 +40,7 @@ pub enum AtomicSwapInstruction {
         receiver: Pubkey,
         token_program: Pubkey,
         vault_bump_seed: u8,
+        vault_bump_seed_data: u8,
     },
 }
 
@@ -48,8 +52,8 @@ impl AtomicSwapInstruction {
         msg!("input length: {}", input.len());
         match instruction_byte {
             0 => {
-                if input.len() != 90 {
-                    // 1 + 32 + 8 + + 8 + 32 + 8 + 1
+                if input.len() != 91 {
+                    // 1 + 32 + 8 + + 8 + 32 + 8 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -85,11 +89,12 @@ impl AtomicSwapInstruction {
                     receiver,
                     rent_exemption_lamports,
                     vault_bump_seed: input[89],
+                    vault_bump_seed_data: input[90],
                 })
             }
             1 => {
-                if input.len() != 122 {
-                    // 1 + 32 + 8 + 8 + 32 + 32 + 8 + 1
+                if input.len() != 123 {
+                    // 1 + 32 + 8 + 8 + 32 + 32 + 8 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -132,11 +137,12 @@ impl AtomicSwapInstruction {
                     token_program,
                     rent_exemption_lamports,
                     vault_bump_seed: input[121],
+                    vault_bump_seed_data: input[122],
                 })
             }
             2 => {
-                if input.len() != 106 {
-                    // 1 + 32 + 8 + 32 + 32 + 1
+                if input.len() != 107 {
+                    // 1 + 32 + 8 + 32 + 32 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -167,11 +173,12 @@ impl AtomicSwapInstruction {
                     sender,
                     token_program,
                     vault_bump_seed: input[105],
+                    vault_bump_seed_data: input[106],
                 })
             }
             3 => {
-                if input.len() != 106 {
-                    // 1 + 32 + 8 + 32 + 32 + 1
+                if input.len() != 107 {
+                    // 1 + 32 + 8 + 32 + 32 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -202,6 +209,7 @@ impl AtomicSwapInstruction {
                     receiver,
                     token_program,
                     vault_bump_seed: input[105],
+                    vault_bump_seed_data: input[106],
                 })
             }
             _ => Err(ProgramError::Custom(INVALID_ATOMIC_SWAP_INSTRUCTION)),
@@ -217,6 +225,7 @@ impl AtomicSwapInstruction {
                 ref receiver,
                 rent_exemption_lamports,
                 vault_bump_seed,
+                vault_bump_seed_data,
             } => {
                 buf.push(0); // Variant identifier for LamportsPayment
                 buf.extend_from_slice(secret_hash);
@@ -225,6 +234,7 @@ impl AtomicSwapInstruction {
                 buf.extend_from_slice(&receiver.to_bytes());
                 buf.extend_from_slice(&rent_exemption_lamports.to_le_bytes());
                 buf.push(vault_bump_seed);
+                buf.push(vault_bump_seed_data);
             }
             AtomicSwapInstruction::SLPTokenPayment {
                 ref secret_hash,
@@ -234,6 +244,7 @@ impl AtomicSwapInstruction {
                 ref token_program,
                 rent_exemption_lamports,
                 vault_bump_seed,
+                vault_bump_seed_data,
             } => {
                 buf.push(1); // Variant identifier for SLPTokenPayment
                 buf.extend_from_slice(secret_hash);
@@ -243,6 +254,7 @@ impl AtomicSwapInstruction {
                 buf.extend_from_slice(&token_program.to_bytes());
                 buf.extend_from_slice(&rent_exemption_lamports.to_le_bytes());
                 buf.push(vault_bump_seed);
+                buf.push(vault_bump_seed_data);
             }
             AtomicSwapInstruction::ReceiverSpend {
                 ref secret,
@@ -250,6 +262,7 @@ impl AtomicSwapInstruction {
                 ref sender,
                 ref token_program,
                 vault_bump_seed,
+                vault_bump_seed_data,
             } => {
                 buf.push(2); // Variant identifier for ReceiverSpend
                 buf.extend_from_slice(secret);
@@ -257,6 +270,7 @@ impl AtomicSwapInstruction {
                 buf.extend_from_slice(&sender.to_bytes());
                 buf.extend_from_slice(&token_program.to_bytes());
                 buf.push(vault_bump_seed);
+                buf.push(vault_bump_seed_data);
             }
             AtomicSwapInstruction::SenderRefund {
                 ref secret_hash,
@@ -264,6 +278,7 @@ impl AtomicSwapInstruction {
                 ref receiver,
                 ref token_program,
                 vault_bump_seed,
+                vault_bump_seed_data,
             } => {
                 buf.push(3); // Variant identifier for SenderRefund
                 buf.extend_from_slice(secret_hash);
@@ -271,6 +286,7 @@ impl AtomicSwapInstruction {
                 buf.extend_from_slice(&receiver.to_bytes());
                 buf.extend_from_slice(&token_program.to_bytes());
                 buf.push(vault_bump_seed);
+                buf.push(vault_bump_seed_data);
             }
         }
         buf
