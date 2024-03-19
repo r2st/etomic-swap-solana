@@ -19,6 +19,7 @@ pub struct InitializeValues {
     receiver_account: Keypair,
     swap_account: Keypair,
     lamports_initial_balance: u64,
+    rent_exemption_lamports: u64,
     secret: [u8; 32],
     secret_hash: [u8; 32],
     lock_time: u64,
@@ -113,14 +114,14 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     // Calculate the minimum balance to make the swap account rent-exempt
     // for storing 41 bytes of data
     let rent = context.banks_client.get_rent().await.expect("get rent");
-    let minimum_balance = rent.minimum_balance(41);
+    let rent_exemption_lamports = rent.minimum_balance(41);
 
     // Create a system instruction to transfer the necessary lamports
     // to the swap account for it to be rent-exempt
     let create_account_instruction = system_instruction::create_account(
         &context.payer.pubkey(),
         &swap_account.pubkey(),
-        minimum_balance,
+        rent_exemption_lamports,
         41,          // Space in bytes for the account data
         &program_id, // The owner program ID
     );
@@ -154,7 +155,7 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     //let seed_str = std::str::from_utf8(seeds[0]).expect("Invalid UTF-8");
     let (vault_pda, bump_seed) = Pubkey::find_program_address(seeds, &program_id);
 
-    let transfer_instruction = system_instruction::transfer(
+    /*let transfer_instruction = system_instruction::transfer(
         &context.payer.pubkey(),
         &vault_pda,
         lamports_initial_balance,
@@ -170,7 +171,7 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         .banks_client
         .process_transaction(transaction)
         .await
-        .unwrap();
+        .unwrap();*/
 
     /*context.last_blockhash = context.banks_client.get_latest_blockhash().await?;
         let receiver_pubkey_hex = hex::encode(receiver_account_pubkey.as_ref());
@@ -223,6 +224,7 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         receiver_account,
         swap_account,
         lamports_initial_balance,
+        rent_exemption_lamports,
         secret,
         secret_hash,
         lock_time,
@@ -261,6 +263,8 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         lock_time: values.lock_time,
         amount: values.amount,
         receiver: values.receiver,
+        rent_exemption_lamports: values.rent_exemption_lamports,
+        vault_bump_seed: values.bump_seed,
     };
     let data = swap_instruction.pack();
     let instruction = Instruction {
@@ -311,11 +315,11 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
     );
     assert_eq!(
         sender_account_balance_after,
-        sender_account_balance - (values.fee + values.amount)
+        sender_account_balance - (values.fee + values.amount + values.rent_exemption_lamports)
     );
     assert_eq!(
         swap_account_balance_after,
-        swap_account_balance + (values.amount)
+        swap_account_balance + values.amount + values.rent_exemption_lamports
     );
     Ok(values)
 }
@@ -430,6 +434,7 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
         amount: values.amount,
         sender: values.sender,
         token_program: values.token_program,
+        vault_bump_seed: values.bump_seed,
     };
     /*let swap_instruction = AtomicSwapInstruction::SenderRefund{
         secret_hash, amount, receiver, token_program,
@@ -437,7 +442,6 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
     let mut data = swap_instruction.pack();
 
     values.context.last_blockhash = values.context.banks_client.get_latest_blockhash().await?;
-    data.push(values.bump_seed);
     let instruction = Instruction {
         program_id: values.program_id,
         // Make sure the sender_account is marked as a signer and the swap_account is not
@@ -524,11 +528,11 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
         amount: values.amount,
         receiver: values.receiver,
         token_program: values.token_program,
+        vault_bump_seed: values.bump_seed,
     };
     let mut data = swap_instruction.pack();
 
     values.context.last_blockhash = values.context.banks_client.get_latest_blockhash().await?;
-    data.push(values.bump_seed);
     let instruction = Instruction {
         program_id: values.program_id,
         // Make sure the sender_account is marked as a signer and the swap_account is not
