@@ -1,13 +1,12 @@
 use crate::etomic_swap::process_instruction;
 use crate::instruction::AtomicSwapInstruction;
-use solana_program::hash::{Hash, Hasher};
-use solana_program_test::{processor, tokio, BanksClient, ProgramTest, ProgramTestContext};
+use solana_program::hash::Hasher;
+use solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext};
 use solana_sdk::{
     instruction::AccountMeta,
     instruction::Instruction,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_instruction,
     transaction::Transaction,
 };
 
@@ -36,7 +35,7 @@ pub struct InitializeValues {
 async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     let program_id = Pubkey::new_unique();
     let system_program = solana_program::system_program::id();
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "etomic-swap-solana",
         program_id,
         processor!(process_instruction), // Processor function
@@ -325,81 +324,6 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         vault_pda_balance_after,
         vault_pda_balance + values.amount + values.rent_exemption_lamports
     );
-    Ok(values)
-}
-
-async fn submit_payment_vault() -> Result<InitializeValues, Box<dyn std::error::Error>> {
-    let mut values = initialize().await?;
-    /*let sender_account_balance = values
-        .banks_client
-        .get_balance(values.sender_account.pubkey())
-        .await?;
-    let vault_pda_balance = values
-        .banks_client
-        .get_balance(values.vault_pda)
-        .await?;
-    println!(
-        "before submit_payment: sender_account balance: {}",
-        sender_account_balance
-    );
-    println!(
-        "before submit_payment: vault_pda balance: {}",
-        vault_pda_balance
-    );*/
-    /*let swap_instruction = AtomicSwapInstruction::LamportsPayment {
-        secret_hash: values.secret_hash,
-        lock_time: values.lock_time,
-        amount: values.amount,
-        receiver: values.receiver,
-    };
-    let data = swap_instruction.pack();
-    let instruction = Instruction {
-        program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the vault_pda is not
-        accounts: vec![
-            AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.vault_pda, false),  // Not a signer
-            AccountMeta::new(values.system_program, false), //system_program must be included
-        ],
-        data, // The packed instruction data expected by your program
-    };
-
-    let mut transaction =
-        Transaction::new_with_payer(&[instruction], Some(&values.sender_account.pubkey()));
-
-    // Sign the transaction with the sender_account, as it's required to authorize the transfer
-    transaction.sign(
-        &[&values.sender_account], // Only the sender needs to sign
-        values.recent_blockhash,
-    );
-
-    // Process the transaction
-    values.banks_client.process_transaction(transaction).await?;
-
-    let sender_account_balance_after = values
-        .banks_client
-        .get_balance(values.sender_account.pubkey())
-        .await?;
-    let vault_pda_balance_after = values
-        .banks_client
-        .get_balance(values.vault_pda)
-        .await?;
-    println!(
-        "after submit_payment: sender_account balance: {}",
-        sender_account_balance_after
-    );
-    println!(
-        "after submit_payment: vault_pda balance: {}",
-        vault_pda_balance_after
-    );
-    assert_eq!(
-        sender_account_balance_after,
-        sender_account_balance - (values.fee + values.amount)
-    );
-    assert_eq!(
-        vault_pda_balance_after,
-        vault_pda_balance + (values.amount)
-    );*/
     Ok(values)
 }
 

@@ -4,14 +4,13 @@ use crate::error_code::{
 };
 use crate::instruction::AtomicSwapInstruction;
 use crate::payment::{Payment, PaymentState};
-use solana_program::program::invoke_signed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint,
     entrypoint::ProgramResult,
     hash::Hasher,
     msg,
-    program::invoke,
+    program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction, system_program,
@@ -155,7 +154,7 @@ pub fn process_instruction(
             assert_eq!(vault_pda.owner, &system_program::ID);
             assert!(system_program::check_id(system_program_account.key));
 
-            let vault_seeds: &[&[u8]] = &[b"swap", receiver.as_ref(), &[vault_bump_seed]];
+            let _vault_seeds: &[&[u8]] = &[b"swap", receiver.as_ref(), &[vault_bump_seed]];
             let vault_seeds_data: &[&[u8]] =
                 &[b"swap_data", receiver.as_ref(), &[vault_bump_seed_data]];
 
@@ -231,7 +230,7 @@ pub fn process_instruction(
 
             let vault_seeds: &[&[u8]] =
                 &[b"swap", receiver_account.key.as_ref(), &[vault_bump_seed]];
-            let vault_seeds_data: &[&[u8]] = &[
+            let _vault_seeds_data: &[&[u8]] = &[
                 b"swap_data",
                 receiver_account.key.as_ref(),
                 &[vault_bump_seed_data],
@@ -358,7 +357,7 @@ pub fn process_instruction(
             assert!(system_program::check_id(system_program_account.key));
 
             let vault_seeds: &[&[u8]] = &[b"swap", receiver.as_ref(), &[vault_bump_seed]];
-            let vault_seeds_data: &[&[u8]] =
+            let _vault_seeds_data: &[&[u8]] =
                 &[b"swap_data", receiver.as_ref(), &[vault_bump_seed_data]];
             /*let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
             assert_eq!(vault_pda.key, &expected_vault_pda);*/
