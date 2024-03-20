@@ -28,6 +28,7 @@ pub enum AtomicSwapInstruction {
     },
     ReceiverSpend {
         secret: [u8; 32],
+        lock_time: u64,
         amount: u64,
         sender: Pubkey,
         token_program: Pubkey,
@@ -36,6 +37,7 @@ pub enum AtomicSwapInstruction {
     },
     SenderRefund {
         secret_hash: [u8; 32], // SHA-256 hash
+        lock_time: u64,
         amount: u64,
         receiver: Pubkey,
         token_program: Pubkey,
@@ -141,7 +143,7 @@ impl AtomicSwapInstruction {
                 })
             }
             2 => {
-                if input.len() != 107 {
+                if input.len() != 115 {
                     // 1 + 32 + 8 + 32 + 32 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
@@ -150,34 +152,40 @@ impl AtomicSwapInstruction {
                     .try_into()
                     .map_err(|_| ProgramError::Custom(INVALID_SECRET))?;
 
-                let amount_array = input[33..41]
+                let lock_time_array = input[33..41]
+                    .try_into()
+                    .map_err(|_| ProgramError::Custom(INVALID_LOCK_TIME))?;
+                let lock_time = u64::from_le_bytes(lock_time_array);
+
+                let amount_array = input[41..49]
                     .try_into()
                     .map_err(|_| ProgramError::Custom(INVALID_AMOUNT))?;
                 let amount = u64::from_le_bytes(amount_array);
 
                 let sender = Pubkey::new_from_array(
-                    input[41..73]
+                    input[49..81]
                         .try_into()
                         .map_err(|_| ProgramError::Custom(INVALID_SENDER_PUBKEY))?,
                 );
 
                 let token_program = Pubkey::new_from_array(
-                    input[73..105]
+                    input[81..113]
                         .try_into()
                         .map_err(|_| ProgramError::Custom(INVALID_TOKEN_PROGRAM))?,
                 );
 
                 Ok(AtomicSwapInstruction::ReceiverSpend {
                     secret,
+                    lock_time,
                     amount,
                     sender,
                     token_program,
-                    vault_bump_seed: input[105],
-                    vault_bump_seed_data: input[106],
+                    vault_bump_seed: input[113],
+                    vault_bump_seed_data: input[114],
                 })
             }
             3 => {
-                if input.len() != 107 {
+                if input.len() != 115 {
                     // 1 + 32 + 8 + 32 + 32 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
@@ -186,30 +194,36 @@ impl AtomicSwapInstruction {
                     .try_into()
                     .map_err(|_| ProgramError::Custom(INVALID_SECRET_HASH))?;
 
-                let amount_array = input[33..41]
+                let lock_time_array = input[33..41]
+                    .try_into()
+                    .map_err(|_| ProgramError::Custom(INVALID_LOCK_TIME))?;
+                let lock_time = u64::from_le_bytes(lock_time_array);
+
+                let amount_array = input[41..49]
                     .try_into()
                     .map_err(|_| ProgramError::Custom(INVALID_AMOUNT))?;
                 let amount = u64::from_le_bytes(amount_array);
 
                 let receiver = Pubkey::new_from_array(
-                    input[41..73]
+                    input[49..81]
                         .try_into()
                         .map_err(|_| ProgramError::Custom(INVALID_RECEIVER_PUBKEY))?,
                 );
 
                 let token_program = Pubkey::new_from_array(
-                    input[73..105]
+                    input[81..113]
                         .try_into()
                         .map_err(|_| ProgramError::Custom(INVALID_TOKEN_PROGRAM))?,
                 );
 
                 Ok(AtomicSwapInstruction::SenderRefund {
                     secret_hash,
+                    lock_time,
                     amount,
                     receiver,
                     token_program,
-                    vault_bump_seed: input[105],
-                    vault_bump_seed_data: input[106],
+                    vault_bump_seed: input[113],
+                    vault_bump_seed_data: input[114],
                 })
             }
             _ => Err(ProgramError::Custom(INVALID_ATOMIC_SWAP_INSTRUCTION)),
@@ -258,6 +272,7 @@ impl AtomicSwapInstruction {
             }
             AtomicSwapInstruction::ReceiverSpend {
                 ref secret,
+                lock_time,
                 amount,
                 ref sender,
                 ref token_program,
@@ -266,6 +281,7 @@ impl AtomicSwapInstruction {
             } => {
                 buf.push(2); // Variant identifier for ReceiverSpend
                 buf.extend_from_slice(secret);
+                buf.extend_from_slice(&lock_time.to_le_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
                 buf.extend_from_slice(&sender.to_bytes());
                 buf.extend_from_slice(&token_program.to_bytes());
@@ -274,6 +290,7 @@ impl AtomicSwapInstruction {
             }
             AtomicSwapInstruction::SenderRefund {
                 ref secret_hash,
+                lock_time,
                 amount,
                 ref receiver,
                 ref token_program,
@@ -282,6 +299,7 @@ impl AtomicSwapInstruction {
             } => {
                 buf.push(3); // Variant identifier for SenderRefund
                 buf.extend_from_slice(secret_hash);
+                buf.extend_from_slice(&lock_time.to_le_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
                 buf.extend_from_slice(&receiver.to_bytes());
                 buf.extend_from_slice(&token_program.to_bytes());

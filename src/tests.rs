@@ -26,9 +26,9 @@ pub struct InitializeValues {
     receiver: Pubkey,
     sender: Pubkey,
     vault_pda: Pubkey,
-    bump_seed: u8,
+    vault_bump_seed: u8,
     vault_pda_data: Pubkey,
-    bump_seed_data: u8,
+    vault_bump_seed_data: u8,
     fee: u64,
 }
 
@@ -149,12 +149,6 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
 
     //For Vault PDA
 
-    let receiver_account_pubkey = receiver_account.pubkey();
-    let seeds: &[&[u8]] = &[b"swap", receiver_account_pubkey.as_ref()];
-    let (vault_pda, bump_seed) = Pubkey::find_program_address(seeds, &program_id);
-    let seeds_data: &[&[u8]] = &[b"swap_data", receiver_account_pubkey.as_ref()];
-    let (vault_pda_data, bump_seed_data) = Pubkey::find_program_address(seeds_data, &program_id);
-
     //let seed_str = std::str::from_utf8(seeds[0]).expect("Invalid UTF-8");
     /*let transfer_instruction = system_instruction::transfer(
         &context.payer.pubkey(),
@@ -217,6 +211,16 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     let receiver = receiver_account.pubkey();
     let sender = sender_account.pubkey();
 
+    /*let receiver_account_pubkey = receiver_account.pubkey();
+    let seeds: &[&[u8]] = &[b"swap", receiver_account_pubkey.as_ref()];
+    let seeds_data: &[&[u8]] = &[b"swap_data", receiver_account_pubkey.as_ref()];*/
+
+    let vault_seeds: &[&[u8]] = &[b"swap", &lock_time.to_le_bytes()[..], &secret_hash[..]];
+    let vault_seeds_data: &[&[u8]] =
+        &[b"swap_data", &lock_time.to_le_bytes()[..], &secret_hash[..]];
+    let (vault_pda, vault_bump_seed) = Pubkey::find_program_address(vault_seeds, &program_id);
+    let (vault_pda_data, vault_bump_seed_data) = Pubkey::find_program_address(vault_seeds_data, &program_id);
+
     Ok(InitializeValues {
         program_id,
         system_program,
@@ -233,9 +237,9 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         receiver,
         sender,
         vault_pda,
-        bump_seed,
+        vault_bump_seed,
         vault_pda_data,
-        bump_seed_data,
+        vault_bump_seed_data,
         fee: 5000,
     })
 }
@@ -266,8 +270,8 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
         amount: values.amount,
         receiver: values.receiver,
         rent_exemption_lamports: values.rent_exemption_lamports,
-        vault_bump_seed: values.bump_seed,
-        vault_bump_seed_data: values.bump_seed_data,
+        vault_bump_seed: values.vault_bump_seed,
+        vault_bump_seed_data: values.vault_bump_seed_data,
     };
     let data = swap_instruction.pack();
     let instruction = Instruction {
@@ -359,11 +363,12 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
     };*/
     let swap_instruction = AtomicSwapInstruction::ReceiverSpend {
         secret: values.secret,
+        lock_time: values.lock_time,
         amount: values.amount,
         sender: values.sender,
         token_program: values.token_program,
-        vault_bump_seed: values.bump_seed,
-        vault_bump_seed_data: values.bump_seed_data,
+        vault_bump_seed: values.vault_bump_seed,
+        vault_bump_seed_data: values.vault_bump_seed_data,
     };
     /*let swap_instruction = AtomicSwapInstruction::SenderRefund{
         secret_hash, amount, receiver, token_program,
@@ -451,11 +456,12 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
     };*/
     let swap_instruction = AtomicSwapInstruction::SenderRefund {
         secret_hash: values.secret_hash,
+        lock_time: values.lock_time,
         amount: values.amount,
         receiver: values.receiver,
         token_program: values.token_program,
-        vault_bump_seed: values.bump_seed,
-        vault_bump_seed_data: values.bump_seed_data,
+        vault_bump_seed: values.vault_bump_seed,
+        vault_bump_seed_data: values.vault_bump_seed_data,
     };
     let mut data = swap_instruction.pack();
 
