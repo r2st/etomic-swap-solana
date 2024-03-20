@@ -219,7 +219,8 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     let vault_seeds_data: &[&[u8]] =
         &[b"swap_data", &lock_time.to_le_bytes()[..], &secret_hash[..]];
     let (vault_pda, vault_bump_seed) = Pubkey::find_program_address(vault_seeds, &program_id);
-    let (vault_pda_data, vault_bump_seed_data) = Pubkey::find_program_address(vault_seeds_data, &program_id);
+    let (vault_pda_data, vault_bump_seed_data) =
+        Pubkey::find_program_address(vault_seeds_data, &program_id);
 
     Ok(InitializeValues {
         program_id,

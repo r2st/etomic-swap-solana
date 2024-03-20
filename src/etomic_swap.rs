@@ -56,9 +56,18 @@ pub fn process_instruction(
             assert_eq!(vault_pda.owner, &system_program::ID);
             assert!(system_program::check_id(system_program_account.key));
 
-            let vault_seeds: &[&[u8]] = &[b"swap", &lock_time.to_le_bytes()[..], &secret_hash[..], &[vault_bump_seed]];
-            let vault_seeds_data: &[&[u8]] =
-                &[b"swap_data", &lock_time.to_le_bytes()[..], &secret_hash[..], &[vault_bump_seed_data]];
+            let vault_seeds: &[&[u8]] = &[
+                b"swap",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash[..],
+                &[vault_bump_seed],
+            ];
+            let vault_seeds_data: &[&[u8]] = &[
+                b"swap_data",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash[..],
+                &[vault_bump_seed_data],
+            ];
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
@@ -154,9 +163,18 @@ pub fn process_instruction(
             assert_eq!(vault_pda.owner, &system_program::ID);
             assert!(system_program::check_id(system_program_account.key));
 
-            let vault_seeds: &[&[u8]] = &[b"swap", &lock_time.to_le_bytes()[..], &secret_hash[..], &[vault_bump_seed]];
-            let vault_seeds_data: &[&[u8]] =
-                &[b"swap_data", &lock_time.to_le_bytes()[..], &secret_hash[..], &[vault_bump_seed_data]];
+            let vault_seeds: &[&[u8]] = &[
+                b"swap",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash[..],
+                &[vault_bump_seed],
+            ];
+            let vault_seeds_data: &[&[u8]] = &[
+                b"swap_data",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash[..],
+                &[vault_bump_seed_data],
+            ];
 
             let mut hasher = Hasher::default();
             hasher.hash(&receiver.to_bytes());
@@ -245,9 +263,18 @@ pub fn process_instruction(
             let amount_bytes = amount.to_le_bytes(); // Assuming `amount` is u64
             hasher.hash(&amount_bytes);
 
-            let vault_seeds: &[&[u8]] = &[b"swap", &lock_time.to_le_bytes()[..], &secret_hash.to_bytes()[..], &[vault_bump_seed]];
-            let vault_seeds_data: &[&[u8]] =
-                &[b"swap_data", &lock_time.to_le_bytes()[..], &secret_hash.to_bytes()[..], &[vault_bump_seed_data]];
+            let vault_seeds: &[&[u8]] = &[
+                b"swap",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash.to_bytes()[..],
+                &[vault_bump_seed],
+            ];
+            let vault_seeds_data: &[&[u8]] = &[
+                b"swap_data",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash.to_bytes()[..],
+                &[vault_bump_seed_data],
+            ];
             /*let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
             assert_eq!(vault_pda.key, &expected_vault_pda);*/
 
@@ -354,9 +381,18 @@ pub fn process_instruction(
             //assert_eq!(vault_pda.owner, &system_program::ID);
             assert!(system_program::check_id(system_program_account.key));
 
-            let vault_seeds: &[&[u8]] = &[b"swap", &lock_time.to_le_bytes()[..], &secret_hash[..], &[vault_bump_seed]];
-            let vault_seeds_data: &[&[u8]] =
-                &[b"swap_data", &lock_time.to_le_bytes()[..], &secret_hash[..], &[vault_bump_seed_data]];
+            let vault_seeds: &[&[u8]] = &[
+                b"swap",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash[..],
+                &[vault_bump_seed],
+            ];
+            let vault_seeds_data: &[&[u8]] = &[
+                b"swap_data",
+                &lock_time.to_le_bytes()[..],
+                &secret_hash[..],
+                &[vault_bump_seed_data],
+            ];
             /*let expected_vault_pda = Pubkey::create_program_address(vault_seeds, program_id)?;
             assert_eq!(vault_pda.key, &expected_vault_pda);*/
 
