@@ -1,5 +1,5 @@
 use crate::error_code::{
-    AMOUNT_ZERO, INVALID_OWNER, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE, NOT_SUPPORTED,
+    AMOUNT_ZERO, INVALID_OWNER, INVALID_PAYMENT_HASH, INVALID_PAYMENT_STATE,
     RECEIVER_SET_TO_DEFAULT, SWAP_ACCOUNT_NOT_FOUND,
 };
 use crate::instruction::AtomicSwapInstruction;
@@ -17,6 +17,7 @@ use solana_program::{
     sysvar::clock::Clock,
     sysvar::Sysvar,
 };
+use spl_token::instruction as token_instruction;
 
 entrypoint!(process_instruction);
 
@@ -105,7 +106,7 @@ pub fn process_instruction(
                 let _ = invoke_signed(&create_instruction, &account_infos, &[vault_seeds_data])?;
 
                 let data = &mut vault_pda_data.try_borrow_mut_data()?; //swap_account
-                                                                       // Ensure the account data has enough space
+                // Ensure the account data has enough space
                 if data.len() < payment_bytes.len() {
                     msg!("Error: Account data buffer too small");
                     return Err(ProgramError::AccountDataTooSmall);
@@ -155,7 +156,7 @@ pub fn process_instruction(
             let vault_pda_data = next_account_info(accounts_iter)?;
             let vault_pda = next_account_info(accounts_iter)?;
             let system_program_account = next_account_info(accounts_iter)?; // System Program account
-                                                                            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             assert!(sender_account.is_signer);
             assert!(vault_pda_data.is_writable);
@@ -192,32 +193,65 @@ pub fn process_instruction(
                 state: PaymentState::PaymentSent,
             };
             let payment_bytes = payment.pack();
+            {
+                let create_instruction = system_instruction::create_account(
+                    &sender_account.key,
+                    &vault_pda_data.key,
+                    rent_exemption_lamports,
+                    41,
+                    &program_id,
+                );
 
-            let create_instruction = system_instruction::create_account(
-                &sender_account.key,
-                &vault_pda_data.key,
-                rent_exemption_lamports,
-                41,
-                &program_id,
-            );
+                let account_infos = vec![
+                    vault_pda_data.clone(), // Though owned by the program, included for the CPI
+                    sender_account.clone(), // The destination of the funds
+                    system_program_account.clone(), // The System Program
+                ];
+
+                let _ = invoke_signed(&create_instruction, &account_infos, &[vault_seeds_data])?;
+
+                let data = &mut vault_pda_data.try_borrow_mut_data()?; //swap_account
+                // Ensure the account data has enough space
+                if data.len() < payment_bytes.len() {
+                    msg!("Error: Account data buffer too small");
+                    return Err(ProgramError::AccountDataTooSmall);
+                }
+
+                // Store the data
+                data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
+            }
+            {
+                let transfer_instruction = system_instruction::transfer(
+                    sender_account.key,      // From
+                    vault_pda.key,           // To
+                    rent_exemption_lamports, // Amount in lamports
+                );
+
+                let account_infos = vec![
+                    sender_account.clone(),         // The source of the funds, must be a signer
+                    vault_pda.clone(),              // The destination of the funds
+                    system_program_account.clone(), // The System Program
+                ];
+
+                let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
+            }
+            let transfer_instruction = token_instruction::transfer(
+                &token_program,
+                sender_account.key, // From
+                vault_pda.key,      // To
+                sender_account.key,
+                &[&sender_account.key], // Passing the signer's pubkey as the only signer seed
+                amount,
+            )?;
 
             let account_infos = vec![
-                vault_pda_data.clone(), // Though owned by the program, included for the CPI
-                sender_account.clone(), // The destination of the funds
+                sender_account.clone(),         // The source of the funds, must be a signer
+                vault_pda.clone(),              // The destination of the funds
                 system_program_account.clone(), // The System Program
+                token_program_account.clone(),
             ];
 
-            let _ = invoke_signed(&create_instruction, &account_infos, &[vault_seeds_data])?;
-
-            let data = &mut vault_pda_data.try_borrow_mut_data()?; //swap_account
-                                                                   // Ensure the account data has enough space
-            if data.len() < payment_bytes.len() {
-                msg!("Error: Account data buffer too small");
-                return Err(ProgramError::AccountDataTooSmall);
-            }
-
-            // Store the data
-            data[..payment_bytes.len()].copy_from_slice(&payment_bytes);
+            let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
 
             // Log the payment event
             msg!("Payment Event: {:?}", payment);
@@ -238,7 +272,7 @@ pub fn process_instruction(
             let vault_pda_data = next_account_info(accounts_iter)?;
             let vault_pda = next_account_info(accounts_iter)?;
             let system_program_account = next_account_info(accounts_iter)?; // System Program account
-                                                                            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             assert!(receiver_account.is_writable);
             assert!(receiver_account.is_signer);
@@ -323,30 +357,24 @@ pub fn process_instruction(
                 let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
             } else {
                 // SPL Token transfer
-                msg!("Not Supported: SPL Token transfer");
-                return Err(ProgramError::Custom(NOT_SUPPORTED));
-                /*let source_token_account = next_account_info(accounts_iter)?;
-                let destination_token_account = next_account_info(accounts_iter)?;
-
-                let token_transfer_instruction = spl_transfer(
-                    &spl_token::id(),
-                    source_token_account.key,
-                    destination_token_account.key,
-                    swap_account.key, // Owner of the source token account
-                    &[&swap_account.key],
+                msg!("SPL Token transfer");
+                let transfer_instruction = token_instruction::transfer(
+                    &token_program,
+                    vault_pda.key,        // From
+                    receiver_account.key, // To
+                    vault_pda.key,
+                    &[&vault_pda.key], // Passing the signer's pubkey as the only signer seed
                     amount,
                 )?;
 
-                invoke_signed(
-                    &token_transfer_instruction,
-                    &[
-                        token_program.clone(),
-                        source_token_account.clone(),
-                        destination_token_account.clone(),
-                        swap_account.clone(),
-                    ],
-                    &[&[&[...]]], // Provide the correct signer seeds
-                )?;*/
+                let account_infos = vec![
+                    vault_pda.clone(),              // The source of the funds, must be a signer
+                    receiver_account.clone(),       // The destination of the funds
+                    system_program_account.clone(), // The System Program
+                    token_program_account.clone(),
+                ];
+
+                let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
             }
 
             //Disclose the secret
@@ -372,7 +400,7 @@ pub fn process_instruction(
             let vault_pda_data = next_account_info(accounts_iter)?;
             let vault_pda = next_account_info(accounts_iter)?;
             let system_program_account = next_account_info(accounts_iter)?; // System Program account
-                                                                            //let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
+            let token_program_account = next_account_info(accounts_iter)?; // SPL Token program account
 
             assert!(sender_account.is_writable);
             assert!(sender_account.is_signer);
@@ -457,30 +485,24 @@ pub fn process_instruction(
                 let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
             } else {
                 // SPL Token transfer
-                msg!("Not Supported: SPL Token transfer");
-                return Err(ProgramError::Custom(NOT_SUPPORTED));
-                /*let source_token_account = next_account_info(accounts_iter)?;
-                let destination_token_account = next_account_info(accounts_iter)?;
-
-                let token_transfer_instruction = spl_transfer(
-                    &spl_token::id(),
-                    source_token_account.key,
-                    destination_token_account.key,
-                    swap_account.key, // Owner of the source token account
-                    &[&swap_account.key],
+                msg!("SPL Token transfer");
+                let transfer_instruction = token_instruction::transfer(
+                    &token_program,
+                    vault_pda.key,      // From
+                    sender_account.key, // To
+                    vault_pda.key,
+                    &[&vault_pda.key], // Passing the signer's pubkey as the only signer seed
                     amount,
                 )?;
 
-                invoke_signed(
-                    &token_transfer_instruction,
-                    &[
-                        token_program.clone(),
-                        source_token_account.clone(),
-                        destination_token_account.clone(),
-                        swap_account.clone(),
-                    ],
-                    &[&[&[...]]], // Provide the correct signer seeds
-                )?;*/
+                let account_infos = vec![
+                    vault_pda.clone(),              // The source of the funds, must be a signer
+                    sender_account.clone(),         // The destination of the funds
+                    system_program_account.clone(), // The System Program
+                    token_program_account.clone(),
+                ];
+
+                let _ = invoke_signed(&transfer_instruction, &account_infos, &[vault_seeds])?;
             }
 
             msg!("Swap account: {:?}", vault_pda_data.key);
