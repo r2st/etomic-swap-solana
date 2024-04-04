@@ -8,7 +8,7 @@ use solana_program::{msg, program_error::ProgramError, pubkey::Pubkey};
 #[derive(Debug)]
 pub enum AtomicSwapInstruction {
     LamportsPayment {
-        secret_hash: [u8; 32], // SHA-256 hash
+        secret_hash: [u8; 32],
         lock_time: u64,
         amount: u64,
         receiver: Pubkey,
@@ -16,8 +16,8 @@ pub enum AtomicSwapInstruction {
         vault_bump_seed: u8,
         vault_bump_seed_data: u8,
     },
-    SLPTokenPayment {
-        secret_hash: [u8; 32], // SHA-256 hash
+    SPLTokenPayment {
+        secret_hash: [u8; 32],
         lock_time: u64,
         amount: u64,
         receiver: Pubkey,
@@ -36,7 +36,7 @@ pub enum AtomicSwapInstruction {
         vault_bump_seed_data: u8,
     },
     SenderRefund {
-        secret_hash: [u8; 32], // SHA-256 hash
+        secret_hash: [u8; 32],
         lock_time: u64,
         amount: u64,
         receiver: Pubkey,
@@ -45,17 +45,49 @@ pub enum AtomicSwapInstruction {
         vault_bump_seed_data: u8,
     },
 }
-
+pub struct LamportsPaymentParams {
+    pub secret_hash: [u8; 32],
+    pub lock_time: u64,
+    pub amount: u64,
+    pub receiver: Pubkey,
+    pub rent_exemption_lamports: u64,
+    pub vault_bump_seed: u8,
+    pub vault_bump_seed_data: u8,
+}
+pub struct SPLTokenPaymentParams {
+    pub secret_hash: [u8; 32],
+    pub lock_time: u64,
+    pub amount: u64,
+    pub receiver: Pubkey,
+    pub token_program: Pubkey,
+    pub rent_exemption_lamports: u64,
+    pub vault_bump_seed: u8,
+    pub vault_bump_seed_data: u8,
+}
+pub struct ReceiverSpendParams {
+    pub secret: [u8; 32],
+    pub lock_time: u64,
+    pub amount: u64,
+    pub sender: Pubkey,
+    pub token_program: Pubkey,
+    pub vault_bump_seed: u8,
+    pub vault_bump_seed_data: u8,
+}
+pub struct SenderRefundParams {
+    pub secret_hash: [u8; 32],
+    pub lock_time: u64,
+    pub amount: u64,
+    pub receiver: Pubkey,
+    pub token_program: Pubkey,
+    pub vault_bump_seed: u8,
+    pub vault_bump_seed_data: u8,
+}
 impl AtomicSwapInstruction {
-    pub fn unpack(
-        instruction_byte: u8,
-        input: &[u8],
-    ) -> Result<AtomicSwapInstruction, ProgramError> {
+    pub fn unpack(input: &[u8]) -> Result<AtomicSwapInstruction, ProgramError> {
         msg!("input length: {}", input.len());
-        match instruction_byte {
+        match input[0] {
             0 => {
                 if input.len() != 91 {
-                    // 1 + 32 + 8 + + 8 + 32 + 8 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -96,7 +128,6 @@ impl AtomicSwapInstruction {
             }
             1 => {
                 if input.len() != 123 {
-                    // 1 + 32 + 8 + 8 + 32 + 32 + 8 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -131,7 +162,7 @@ impl AtomicSwapInstruction {
                     .map_err(|_| ProgramError::Custom(INVALID_AMOUNT))?;
                 let rent_exemption_lamports = u64::from_le_bytes(rent_exemption_lamports_array);
 
-                Ok(AtomicSwapInstruction::SLPTokenPayment {
+                Ok(AtomicSwapInstruction::SPLTokenPayment {
                     secret_hash,
                     lock_time,
                     amount,
@@ -144,7 +175,6 @@ impl AtomicSwapInstruction {
             }
             2 => {
                 if input.len() != 115 {
-                    // 1 + 32 + 8 + 32 + 32 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -186,7 +216,6 @@ impl AtomicSwapInstruction {
             }
             3 => {
                 if input.len() != 115 {
-                    // 1 + 32 + 8 + 32 + 32 + 1 + 1
                     return Err(ProgramError::Custom(INVALID_INPUT_LENGTH));
                 }
 
@@ -229,6 +258,7 @@ impl AtomicSwapInstruction {
             _ => Err(ProgramError::Custom(INVALID_ATOMIC_SWAP_INSTRUCTION)),
         }
     }
+    #[allow(dead_code)]
     pub fn pack(&self) -> Vec<u8> {
         let mut buf = Vec::new();
         match *self {
@@ -241,7 +271,7 @@ impl AtomicSwapInstruction {
                 vault_bump_seed,
                 vault_bump_seed_data,
             } => {
-                buf.push(0); // Variant identifier for LamportsPayment
+                buf.push(0);
                 buf.extend_from_slice(secret_hash);
                 buf.extend_from_slice(&lock_time.to_le_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
@@ -250,7 +280,7 @@ impl AtomicSwapInstruction {
                 buf.push(vault_bump_seed);
                 buf.push(vault_bump_seed_data);
             }
-            AtomicSwapInstruction::SLPTokenPayment {
+            AtomicSwapInstruction::SPLTokenPayment {
                 ref secret_hash,
                 lock_time,
                 amount,
@@ -260,7 +290,7 @@ impl AtomicSwapInstruction {
                 vault_bump_seed,
                 vault_bump_seed_data,
             } => {
-                buf.push(1); // Variant identifier for SLPTokenPayment
+                buf.push(1);
                 buf.extend_from_slice(secret_hash);
                 buf.extend_from_slice(&lock_time.to_le_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
@@ -279,7 +309,7 @@ impl AtomicSwapInstruction {
                 vault_bump_seed,
                 vault_bump_seed_data,
             } => {
-                buf.push(2); // Variant identifier for ReceiverSpend
+                buf.push(2);
                 buf.extend_from_slice(secret);
                 buf.extend_from_slice(&lock_time.to_le_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());
@@ -297,7 +327,7 @@ impl AtomicSwapInstruction {
                 vault_bump_seed,
                 vault_bump_seed_data,
             } => {
-                buf.push(3); // Variant identifier for SenderRefund
+                buf.push(3);
                 buf.extend_from_slice(secret_hash);
                 buf.extend_from_slice(&lock_time.to_le_bytes());
                 buf.extend_from_slice(&amount.to_le_bytes());

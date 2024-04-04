@@ -1,10 +1,9 @@
-use crate::etomic_swap::process_instruction;
 use crate::instruction::AtomicSwapInstruction;
+use crate::satomic_swap::process_instruction;
 use solana_program::hash::Hasher;
 use solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext};
 use solana_sdk::{
-    instruction::AccountMeta,
-    instruction::Instruction,
+    instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     transaction::Transaction,
@@ -16,7 +15,6 @@ pub struct InitializeValues {
     context: ProgramTestContext,
     sender_account: Keypair,
     receiver_account: Keypair,
-    lamports_initial_balance: u64,
     rent_exemption_lamports: u64,
     secret: [u8; 32],
     secret_hash: [u8; 32],
@@ -35,15 +33,11 @@ pub struct InitializeValues {
 async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     let program_id = Pubkey::new_unique();
     let system_program = solana_program::system_program::id();
-    let program_test = ProgramTest::new(
-        "etomic-swap-solana",
-        program_id,
-        processor!(process_instruction), // Processor function
-    );
+    let program_test =
+        ProgramTest::new("satomic-swap", program_id, processor!(process_instruction));
 
     let mut context = program_test.start_with_context().await;
 
-    // Setup accounts
     let sender_account = Keypair::new();
     let receiver_account = Keypair::new();
     let lamports_initial_balance = 1000000000;
@@ -110,95 +104,8 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     assert_eq!(recipient_account.lamports, lamports_initial_balance);
     assert_eq!(recipient_balance, lamports_initial_balance);
 
-    // Calculate the minimum balance to make the swap account rent-exempt
-    // for storing 41 bytes of data
     let rent = context.banks_client.get_rent().await.expect("get rent");
     let rent_exemption_lamports = rent.minimum_balance(41);
-
-    // Create a system instruction to transfer the necessary lamports
-    // to the swap account for it to be rent-exempt
-    /*let create_account_instruction = system_instruction::create_account(
-        &context.payer.pubkey(),
-        &vault_pda.pubkey(),
-        rent_exemption_lamports,
-        41,          // Space in bytes for the account data
-        &program_id, // The owner program ID
-    );
-
-    // Create and sign a transaction for the account creation and funding
-    let mut transaction =
-        Transaction::new_with_payer(&[create_account_instruction], Some(&context.payer.pubkey()));
-    transaction.sign(&[&context.payer, &vault_pda], context.last_blockhash);
-
-    // Process the transaction
-    context
-        .banks_client
-        .process_transaction(transaction)
-        .await?;
-
-    let assign_instruction = system_instruction::assign(&vault_pda.pubkey(), &program_id);
-
-    let mut transaction =
-        Transaction::new_with_payer(&[assign_instruction], Some(&context.payer.pubkey()));
-    transaction.sign(&[&context.payer, &vault_pda], context.last_blockhash);
-    context
-        .banks_client
-        .process_transaction(transaction)
-        .await
-        .unwrap();*/
-
-    //For Vault PDA
-
-    //let seed_str = std::str::from_utf8(seeds[0]).expect("Invalid UTF-8");
-    /*let transfer_instruction = system_instruction::transfer(
-        &context.payer.pubkey(),
-        &vault_pda,
-        lamports_initial_balance,
-    );
-
-    // Create and sign a transaction
-    let mut transaction =
-        Transaction::new_with_payer(&[transfer_instruction], Some(&context.payer.pubkey()));
-    transaction.sign(&[&context.payer], context.last_blockhash);
-
-    // Process the transaction
-    context
-        .banks_client
-        .process_transaction(transaction)
-        .await
-        .unwrap();*/
-
-    /*context.last_blockhash = context.banks_client.get_latest_blockhash().await?;
-        let receiver_pubkey_hex = hex::encode(receiver_account_pubkey.as_ref());
-
-    // Concatenate them into a single String for the seed
-        let combined_seed = format!("{}{}", seed_str, receiver_pubkey_hex);
-
-    // Assuming `payer` is a Keypair, `vault_pda` is a Pubkey for the new account, and `program_id` is your program's ID
-        let minimum_balance = solana_program::rent::Rent::default().minimum_balance(41); // Assuming 41 bytes of data storage
-        let create_account_instruction = system_instruction::create_account_with_seed(
-            &context.payer.pubkey(),  // From / payer's pubkey
-            &vault_pda,       // New account's pubkey
-            &context.payer.pubkey(),  // Base account, often the payer but could be another account
-            &seed_str,   // Seed string used for derivation
-            minimum_balance,
-            41,               // Space in bytes for the account data
-            &program_id,      // Owner / program ID
-        );
-
-    // Create and sign a transaction for the account creation and funding
-        let mut transaction = Transaction::new_with_payer(
-            &[create_account_instruction],
-            Some(&context.payer.pubkey())
-        );
-        transaction.sign(&[&context.payer], context.last_blockhash); // Sign the transaction
-        context.banks_client.process_transaction(transaction).await?;*/
-
-    /*let assign_instruction = system_instruction::assign(&vault_pda, &program_id);
-
-    let mut transaction = Transaction::new_with_payer(&[assign_instruction], Some(&payer.pubkey()));
-    transaction.sign(&[&payer], recent_blockhash);
-    banks_client.process_transaction(transaction).await.unwrap();*/
 
     let secret = [0u8; 32];
     let mut hasher = Hasher::default();
@@ -210,10 +117,6 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
     let token_program = Pubkey::new_from_array([0; 32]);
     let receiver = receiver_account.pubkey();
     let sender = sender_account.pubkey();
-
-    /*let receiver_account_pubkey = receiver_account.pubkey();
-    let seeds: &[&[u8]] = &[b"swap", receiver_account_pubkey.as_ref()];
-    let seeds_data: &[&[u8]] = &[b"swap_data", receiver_account_pubkey.as_ref()];*/
 
     let vault_seeds: &[&[u8]] = &[b"swap", &lock_time.to_le_bytes()[..], &secret_hash[..]];
     let vault_seeds_data: &[&[u8]] =
@@ -228,7 +131,6 @@ async fn initialize() -> Result<InitializeValues, Box<dyn std::error::Error>> {
         context,
         sender_account,
         receiver_account,
-        lamports_initial_balance,
         rent_exemption_lamports,
         secret,
         secret_hash,
@@ -277,26 +179,20 @@ async fn submit_payment() -> Result<InitializeValues, Box<dyn std::error::Error>
     let data = swap_instruction.pack();
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
-            AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.vault_pda_data, false),         // Not a signer
-            AccountMeta::new(values.vault_pda, false),              // Not a signer
-            AccountMeta::new(values.system_program, false), //system_program must be included
+            AccountMeta::new(values.sender_account.pubkey(), true),
+            AccountMeta::new(values.vault_pda_data, false),
+            AccountMeta::new(values.vault_pda, false),
+            AccountMeta::new(values.system_program, false),
         ],
-        data, // The packed instruction data expected by your program
+        data,
     };
 
     let mut transaction =
         Transaction::new_with_payer(&[instruction], Some(&values.sender_account.pubkey()));
 
-    // Sign the transaction with the sender_account, as it's required to authorize the transfer
-    transaction.sign(
-        &[&values.sender_account], // Only the sender needs to sign
-        values.context.last_blockhash,
-    );
+    transaction.sign(&[&values.sender_account], values.context.last_blockhash);
 
-    // Process the transaction
     values
         .context
         .banks_client
@@ -359,9 +255,6 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
         "before submit_payment: vault_pda balance: {}",
         vault_pda_balance
     );
-    /*let swap_instruction = AtomicSwapInstruction::SLPTokenPayment{
-        secret_hash, lock_time, amount, receiver, token_program,
-    };*/
     let swap_instruction = AtomicSwapInstruction::ReceiverSpend {
         secret: values.secret,
         lock_time: values.lock_time,
@@ -371,33 +264,24 @@ async fn test_receiver_spend() -> Result<(), Box<dyn std::error::Error>> {
         vault_bump_seed: values.vault_bump_seed,
         vault_bump_seed_data: values.vault_bump_seed_data,
     };
-    /*let swap_instruction = AtomicSwapInstruction::SenderRefund{
-        secret_hash, amount, receiver, token_program,
-    };*/
-    let mut data = swap_instruction.pack();
+    let data = swap_instruction.pack();
 
     values.context.last_blockhash = values.context.banks_client.get_latest_blockhash().await?;
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
-            AccountMeta::new(values.receiver_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.vault_pda_data, false),           // Not a signer
+            AccountMeta::new(values.receiver_account.pubkey(), true),
+            AccountMeta::new(values.vault_pda_data, false),
             AccountMeta::new(values.vault_pda, false),
-            AccountMeta::new(values.system_program, false), //system_program must be included
+            AccountMeta::new(values.system_program, false),
         ],
-        data, // The packed instruction data expected by your program
+        data,
     };
 
     let mut transaction =
         Transaction::new_with_payer(&[instruction], Some(&values.receiver_account.pubkey()));
-    // Sign the transaction with the receiver_account, as it's required to authorize the transfer
-    transaction.sign(
-        &[&values.receiver_account], // Only the receiver_account needs to sign
-        values.context.last_blockhash,
-    );
+    transaction.sign(&[&values.receiver_account], values.context.last_blockhash);
 
-    // Process the transaction
     values
         .context
         .banks_client
@@ -452,9 +336,6 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
         "before submit_payment: vault_pda balance: {}",
         vault_pda_balance
     );
-    /*let swap_instruction = AtomicSwapInstruction::SLPTokenPayment{
-        secret_hash, lock_time, amount, receiver, token_program,
-    };*/
     let swap_instruction = AtomicSwapInstruction::SenderRefund {
         secret_hash: values.secret_hash,
         lock_time: values.lock_time,
@@ -464,30 +345,24 @@ async fn test_sender_refund() -> Result<(), Box<dyn std::error::Error>> {
         vault_bump_seed: values.vault_bump_seed,
         vault_bump_seed_data: values.vault_bump_seed_data,
     };
-    let mut data = swap_instruction.pack();
+    let data = swap_instruction.pack();
 
     values.context.last_blockhash = values.context.banks_client.get_latest_blockhash().await?;
     let instruction = Instruction {
         program_id: values.program_id,
-        // Make sure the sender_account is marked as a signer and the vault_pda is not
         accounts: vec![
-            AccountMeta::new(values.sender_account.pubkey(), true), // Marked as signer
-            AccountMeta::new(values.vault_pda_data, false),         // Not a signer
+            AccountMeta::new(values.sender_account.pubkey(), true),
+            AccountMeta::new(values.vault_pda_data, false),
             AccountMeta::new(values.vault_pda, false),
-            AccountMeta::new(values.system_program, false), //system_program must be included
+            AccountMeta::new(values.system_program, false),
         ],
-        data, // The packed instruction data expected by your program
+        data,
     };
 
     let mut transaction =
         Transaction::new_with_payer(&[instruction], Some(&values.sender_account.pubkey()));
-    // Sign the transaction with the receiver_account, as it's required to authorize the transfer
-    transaction.sign(
-        &[&values.sender_account], // Only the receiver_account needs to sign
-        values.context.last_blockhash,
-    );
+    transaction.sign(&[&values.sender_account], values.context.last_blockhash);
 
-    // Process the transaction
     values
         .context
         .banks_client
